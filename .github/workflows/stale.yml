@@ -1,0 +1,24 @@
+name: Close stale issues
+
+on:
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  issues: write
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/stale@v10.1.1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          days-before-stale: 30
+          days-before-close: 7
+          stale-issue-message: '⏳ Этот тикет был отмечен как неактивный (отсутствие новых сообщений более 30 дней). Он будет автоматически закрыт через 7 дней, если не появится новых комментариев.'
+          close-issue-message: '❌ Тикет автоматически закрыт из-за отсутствия активности. При необходимости вы можете переоткрыть его.'
+          exempt-issue-labels: 'pinned, enhancement'
+          remove-stale-when-updated: true
