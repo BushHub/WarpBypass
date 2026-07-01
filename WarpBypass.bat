@@ -1,6 +1,6 @@
 <# : RUN
 @echo off
-title WarpBypass by BUSH
+title WarpBypass v4.6 by BUSH
 cd /d "%~dp0"
 net session >nul 2>&1
 if %errorLevel% neq 0 (
@@ -87,8 +87,7 @@ if (-not (Test-Path $PingListPath)) {
 
 function Save-Config { $Config | ConvertTo-Json | Set-Content $ConfigPath }
 
-$Logo = @'
-=========================================================
+$LogoText = @'
  _    _                    _                                
 | |  | |                  | |                               
 | |  | | __ _ _ __ _ __   | |__  _   _ _ __   __ _ ___ ___  
@@ -97,8 +96,13 @@ $Logo = @'
  \/  \/ \__,_|_|  | .__/  |_.__/ \__, | .__/ \__,_|___/___/ 
                   | |             __/ | |                   
                   |_|            |___/|_|                   
-=========================================================
 '@
+
+function Write-Header {
+    Write-Host "=========================================================" -ForegroundColor Magenta
+    Write-Host $LogoText -ForegroundColor Magenta
+    Write-Host "=========================================================" -ForegroundColor Magenta
+}
 
 $IsOnline = $false
 try {
@@ -115,12 +119,11 @@ function Check-AppUpdate {
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
         $ReleaseInfo = Invoke-RestMethod -Uri $RepoApiUrl -UseBasicParsing -TimeoutSec 3 -ErrorAction Stop
 
-        # Парсим тег релиза (например "v4.6" превращаем в "4.6")
         $RemoteVersionStr = $ReleaseInfo.tag_name -replace '(?i)^v', ''
-        $RemoteVerNum = [double]::Parse($RemoteVersionStr, [cultureinfo]::InvariantCulture)
-        $LocalVerNum = [double]::Parse($AppVersion, [cultureinfo]::InvariantCulture)
+        $RemoteVer = [version]$RemoteVersionStr
+        $LocalVer  = [version]$AppVersion
 
-        if ($RemoteVerNum -gt $LocalVerNum -and $Config.IgnoredVersion -ne $RemoteVersionStr) {
+        if ($RemoteVer -gt $LocalVer -and $Config.IgnoredVersion -ne $RemoteVersionStr) {
             Write-Host ""
             Write-Host "=========================================================" -ForegroundColor Yellow
             Write-Host " Доступен новый релиз WarpBypass: v$RemoteVersionStr (Текущая: v$AppVersion)" -ForegroundColor Green
@@ -130,7 +133,6 @@ function Check-AppUpdate {
             if ($UpdateChoice -match "^[YyДд]") {
                 Write-Host "-> Загрузка и инсталляция пакета обновления..." -ForegroundColor Cyan
                 
-                # Скачиваем скрипт, жестко привязанный к тегу релиза, чтобы избежать ошибок из main
                 $DownloadUrl = "https://raw.githubusercontent.com/BushHub/WarpBypass/$($ReleaseInfo.tag_name)/WarpBypass.bat"
                 $RemoteCode = Invoke-RestMethod -Uri $DownloadUrl -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop
                 
@@ -209,7 +211,7 @@ function Check-Updates {
 function Show-Settings {
     while ($true) {
         Clear-Host
-        Write-Host $Logo -ForegroundColor Magenta
+        Write-Header
         Write-Host "                  КОНФИГУРАЦИЯ (v$AppVersion)" -ForegroundColor Cyan
         Write-Host "=========================================================" -ForegroundColor DarkGray
         Write-Host " [1] Автоматический запуск профиля : " -NoNewline; if ($Config.AutoPreset) { Write-Host "АКТИВНО" -ForegroundColor Green } else { Write-Host "ОТКЛЮЧЕНО" -ForegroundColor Red }
@@ -237,8 +239,7 @@ function Launch-Tunnel ($BatFile) {
     Save-Config
     
     Clear-Host
-    Write-Host $Logo -ForegroundColor Magenta
-    Write-Host "=========================================================" -ForegroundColor Cyan
+    Write-Header
     
     if ($Config.DnsFix) {
         Write-Host "-> Очистка локального кэша DNS-резолвера..." -ForegroundColor Yellow
@@ -342,7 +343,7 @@ function Launch-Tunnel ($BatFile) {
 
 # Основной цикл
 Clear-Host
-Write-Host $Logo -ForegroundColor Magenta
+Write-Header
 
 if ($Config.AutoUpdate) {
     Check-AppUpdate
@@ -367,7 +368,8 @@ if ($Config.AutoPreset -and $Config.LastPreset -and (Test-Path $Config.LastPrese
 
 while ($true) {
     Clear-Host
-    Write-Host $Logo -ForegroundColor Magenta
+    Write-Host "=========================================================" -ForegroundColor Magenta
+    Write-Host $LogoText -ForegroundColor Magenta
     Write-Host "           Created By BUSH   |   v$AppVersion   " -ForegroundColor Cyan
     Write-Host "=========================================================" -ForegroundColor DarkGray
     
