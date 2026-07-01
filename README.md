@@ -1,5 +1,6 @@
-<img src=".github/assets/banner.png" alt="WarpBypass Banner" width="100%">
 # WarpBypass
+
+<img src=".github/assets/banner.png" alt="WarpBypass Banner" width="100%">
 
 ![Windows Support](https://img.shields.io/badge/OS-Windows_10%20%7C%2011-blue)
 ![License](https://img.shields.io/badge/License-MIT-green)
