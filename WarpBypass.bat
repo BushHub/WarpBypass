@@ -13,6 +13,7 @@ exit /b
 #>
 
 $ProgressPreference = 'SilentlyContinue'
+$WarningPreference = 'SilentlyContinue'
 
 # =========================================================
 # Утилита: WarpBypass
@@ -20,30 +21,31 @@ $ProgressPreference = 'SilentlyContinue'
 # =========================================================
 
 $AppVersion = "4.5"
-$RepoRawUrl = "https://raw.githubusercontent.com/rydve/WarpBypass/main/WarpBypass.bat"
+$RepoRawUrl = "https://raw.githubusercontent.com/BushHub/WarpBypass/main/WarpBypass.bat"
 
 # ====== БЛОКИРОВКА ЗАМОРОЗКИ КОНСОЛИ (ANTI QUICK-EDIT) ======
-if (-not ("Win32.Win32Console" -as [type])) {
-    $ConsoleCode = @'
-    [DllImport("kernel32.dll", SetLastError = true)]
-    public static extern IntPtr GetStdHandle(int nStdHandle);
-    [DllImport("kernel32.dll", SetLastError = true)]
-    public static extern bool GetConsoleMode(IntPtr hConsoleHandle, out uint lpMode);
-    [DllImport("kernel32.dll", SetLastError = true)]
-    public static extern bool SetConsoleMode(IntPtr hConsoleHandle, uint dwMode);
+try {
+    if (-not ("Win32.Win32Console" -as [type])) {
+        $ConsoleCode = @'
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern IntPtr GetStdHandle(int nStdHandle);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern bool GetConsoleMode(IntPtr hConsoleHandle, out uint lpMode);
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern bool SetConsoleMode(IntPtr hConsoleHandle, uint dwMode);
 '@
-    Add-Type -MemberDefinition $ConsoleCode -Name "Win32Console" -Namespace "Win32" | Out-Null
-}
-$StdInputHandle = [Win32.Win32Console]::GetStdHandle(-10) # STD_INPUT_HANDLE
-$ConsoleMode = 0
-if ([Win32.Win32Console]::GetConsoleMode($StdInputHandle, [ref]$ConsoleMode)) {
-    # Отключаем ENABLE_QUICK_EDIT_MODE (0x0040) чтобы скрипт не вис при кликах мыши
-    [Win32.Win32Console]::SetConsoleMode($StdInputHandle, ($ConsoleMode -band -not 0x0040))
-}
+        Add-Type -MemberDefinition $ConsoleCode -Name "Win32Console" -Namespace "Win32" -ErrorAction SilentlyContinue *> $null
+    }
+    $StdInputHandle = [Win32.Win32Console]::GetStdHandle(-10)
+    $ConsoleMode = 0
+    if ([Win32.Win32Console]::GetConsoleMode($StdInputHandle, [ref]$ConsoleMode)) {
+        [Win32.Win32Console]::SetConsoleMode($StdInputHandle, ($ConsoleMode -band -not 0x0040))
+    }
+} catch {}
 # ============================================================
 
 $StorageDir = "$env:LOCALAPPDATA\WarpBypass"
-if (-not (Test-Path $StorageDir)) { New-Item -ItemType Directory -Path $StorageDir -Force | Out-Null }
+if (-not (Test-Path $StorageDir)) { New-Item -ItemType Directory -Path $StorageDir -Force -ErrorAction SilentlyContinue *> $null }
 
 $ZapretDir = "$StorageDir\zapret"
 $ZapretZip = "$StorageDir\zapret.zip"
@@ -53,10 +55,13 @@ $WarpCli = "C:\Program Files\Cloudflare\Cloudflare WARP\warp-cli.exe"
 $ConfigPath = "$StorageDir\config.json"
 $PingListPath = "$StorageDir\ping_list.txt"
 
-# Агрессивная пре-зачистка старых сессий (Force Restart при повторном или аварийном запуске)
-Stop-Process -Name "winws" -Force -ErrorAction SilentlyContinue
-Stop-Process -Name "Cloudflare WARP" -Force -ErrorAction SilentlyContinue
-if (Test-Path $WarpCli) { & $WarpCli --accept-tos disconnect 2>$null | Out-Null }
+# БРОНЕБОЙНАЯ ПРЕ-ЗАЧИСТКА: Подавление всех стримов вывода через TRY/CATCH + *>$null
+try { Stop-Service -Name "zapret" -Force -ErrorAction SilentlyContinue *> $null } catch {}
+try { Stop-Service -Name "goodbyedpi" -Force -ErrorAction SilentlyContinue *> $null } catch {}
+try { Stop-Process -Name "winws" -Force -ErrorAction SilentlyContinue *> $null } catch {}
+try { Stop-Process -Name "goodbyedpi" -Force -ErrorAction SilentlyContinue *> $null } catch {}
+try { Stop-Process -Name "Cloudflare WARP" -Force -ErrorAction SilentlyContinue *> $null } catch {}
+try { if (Test-Path $WarpCli) { & $WarpCli --accept-tos disconnect -ErrorAction SilentlyContinue *> $null } } catch {}
 Clear-Host
 
 $DefaultConfig = @{ AutoPreset = $false; LastPreset = ""; AutoPing = $true; DnsFix = $false; IgnoredVersion = "0.0"; AutoUpdate = $true }
@@ -83,6 +88,7 @@ if (-not (Test-Path $PingListPath)) {
 
 function Save-Config { $Config | ConvertTo-Json | Set-Content $ConfigPath }
 
+# Ровный, монолитный логотип
 $Logo = @'
 =========================================================
  _    _                     _                                
@@ -254,8 +260,6 @@ function Launch-Tunnel ($BatFile) {
         } catch { Write-Host "Критическая ошибка: Сбой при инсталляции Cloudflare WARP." -ForegroundColor Red; Pause; Exit }
     }
 
-    # ФИКС: Переводим тип запуска службы ВАРПа в режим "Вручную" (Manual)
-    # Защищает систему от падения интернета после внезапных крашей питания и перезагрузок ПК.
     Write-Host "-> Настройка параметров системной службы..." -ForegroundColor Yellow
     Set-Service -Name "Cloudflare WARP" -StartupType Manual -ErrorAction SilentlyContinue
 
