@@ -16,14 +16,14 @@ $ProgressPreference = 'SilentlyContinue'
 $WarningPreference = 'SilentlyContinue'
 
 # =========================================================
-# Утилита: WarpBypass
-# Автор: Created By BUSH
+# WarpBypass
+# Author: BUSH
 # =========================================================
 
 $AppVersion = "4.5"
 $RepoRawUrl = "https://raw.githubusercontent.com/BushHub/WarpBypass/main/WarpBypass.bat"
 
-# ====== БЛОКИРОВКА ЗАМОРОЗКИ КОНСОЛИ (ANTI QUICK-EDIT) ======
+# Disable console Quick-Edit mode
 try {
     if (-not ("Win32.Win32Console" -as [type])) {
         $ConsoleCode = @'
@@ -42,7 +42,6 @@ try {
         [Win32.Win32Console]::SetConsoleMode($StdInputHandle, ($ConsoleMode -band -not 0x0040))
     }
 } catch {}
-# ============================================================
 
 $StorageDir = "$env:LOCALAPPDATA\WarpBypass"
 if (-not (Test-Path $StorageDir)) { New-Item -ItemType Directory -Path $StorageDir -Force -ErrorAction SilentlyContinue *> $null }
@@ -55,7 +54,7 @@ $WarpCli = "C:\Program Files\Cloudflare\Cloudflare WARP\warp-cli.exe"
 $ConfigPath = "$StorageDir\config.json"
 $PingListPath = "$StorageDir\ping_list.txt"
 
-# БРОНЕБОЙНАЯ ПРЕ-ЗАЧИСТКА: Подавление всех стримов вывода через TRY/CATCH + *>$null
+# Terminate conflicting processes and services
 try { Stop-Service -Name "zapret" -Force -ErrorAction SilentlyContinue *> $null } catch {}
 try { Stop-Service -Name "goodbyedpi" -Force -ErrorAction SilentlyContinue *> $null } catch {}
 try { Stop-Process -Name "winws" -Force -ErrorAction SilentlyContinue *> $null } catch {}
@@ -88,7 +87,6 @@ if (-not (Test-Path $PingListPath)) {
 
 function Save-Config { $Config | ConvertTo-Json | Set-Content $ConfigPath }
 
-# Ровный, монолитный логотип
 $Logo = @'
 =========================================================
  _    _                     _                                
@@ -260,7 +258,7 @@ function Launch-Tunnel ($BatFile) {
         } catch { Write-Host "Критическая ошибка: Сбой при инсталляции Cloudflare WARP." -ForegroundColor Red; Pause; Exit }
     }
 
-    Write-Host "-> Настройка параметров системной службы..." -ForegroundColor Yellow
+    # Configure Cloudflare WARP service startup type to Manual
     Set-Service -Name "Cloudflare WARP" -StartupType Manual -ErrorAction SilentlyContinue
 
     Write-Host "-> Перезапуск системной службы Cloudflare WARP..." -ForegroundColor Yellow
