@@ -1,4 +1,4 @@
-<# : RUN
+﻿<# : RUN
 @echo off
 title WarpBypass v4.6 by BUSH
 cd /d "%~dp0"
@@ -20,7 +20,7 @@ $WarningPreference = 'SilentlyContinue'
 # Author: BUSH
 # =========================================================
 
-$AppVersion = "4.6"
+$AppVersion = "4.7"
 $RepoApiUrl = "https://api.github.com/repos/BushHub/WarpBypass/releases/latest"
 
 # Disable console Quick-Edit mode
