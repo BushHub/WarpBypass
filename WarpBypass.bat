@@ -1,6 +1,6 @@
 <# : RUN
 @echo off
-title WarpBypass v4.7 by BUSH
+title WarpBypass v4.7.1 by BUSH
 cd /d "%~dp0"
 net session >nul 2>&1
 if %errorLevel% neq 0 (
@@ -20,7 +20,7 @@ $WarningPreference = 'SilentlyContinue'
 # Author: BUSH
 # =========================================================
 
-$AppVersion = "4.7"
+$AppVersion = "4.7.1"
 $RepoApiUrl = "https://api.github.com/repos/BushHub/WarpBypass/releases/latest"
 
 # Disable console Quick-Edit mode
@@ -134,13 +134,12 @@ function Check-AppUpdate {
                 Write-Host "-> Загрузка и инсталляция пакета обновления..." -ForegroundColor Cyan
                 
                 $DownloadUrl = "https://raw.githubusercontent.com/BushHub/WarpBypass/$($ReleaseInfo.tag_name)/WarpBypass.bat"
-                $RemoteCode = Invoke-RestMethod -Uri $DownloadUrl -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop
-                
                 $BatPath = $env:WARP_BAT_PATH
                 $TempFile = "$env:TEMP\WarpBypass_new.bat"
                 $UpdaterBat = "$env:TEMP\WarpBypass_updater.bat"
                 
-                [IO.File]::WriteAllText($TempFile, $RemoteCode, [System.Text.Encoding]::UTF8)
+                # ИСПРАВЛЕНИЕ BOM: Скачиваем файл напрямую, чтобы не сломать кодировку
+                Invoke-WebRequest -Uri $DownloadUrl -OutFile $TempFile -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop
                 
                 $UpdaterCode = "@echo off`nchcp 65001 >nul`ntimeout /t 2 /nobreak >nul`nmove /y `"$TempFile`" `"$BatPath`" >nul`nstart `"`" `"$BatPath`"`ndel `"%~f0`""
                 [IO.File]::WriteAllText($UpdaterBat, $UpdaterCode, [System.Text.Encoding]::UTF8)
@@ -212,7 +211,7 @@ function Show-Settings {
     while ($true) {
         Clear-Host
         Write-Header
-        Write-Host "                  КОНФИГУРАЦИЯ (v$AppVersion)" -ForegroundColor Cyan
+        Write-Host "                 КОНФИГУРАЦИЯ (v$AppVersion)" -ForegroundColor Cyan
         Write-Host "=========================================================" -ForegroundColor DarkGray
         Write-Host " [1] Автоматический запуск профиля : " -NoNewline; if ($Config.AutoPreset) { Write-Host "АКТИВНО" -ForegroundColor Green } else { Write-Host "ОТКЛЮЧЕНО" -ForegroundColor Red }
         Write-Host " [2] Диагностика задержки (Ping)   : " -NoNewline; if ($Config.AutoPing) { Write-Host "АКТИВНО" -ForegroundColor Green } else { Write-Host "ОТКЛЮЧЕНО" -ForegroundColor Red }
@@ -256,11 +255,32 @@ function Launch-Tunnel ($BatFile) {
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
         try {
             Invoke-WebRequest -Uri "https://downloads.cloudflareclient.com/v1/download/windows/ga" -OutFile $WarpMsi -UseBasicParsing -UserAgent "WarpBypass"
-            $MsiProcess = Start-Process msiexec.exe -ArgumentList @('/i', $WarpMsi, '/qn', '/norestart', 'START_WPF_AS_USER=0') -PassThru
-            while (-not $MsiProcess.HasExited) { Stop-Process -Name "Cloudflare WARP" -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 1 }
+            
+            Write-Host "-> Выполнение тихой установки компонента (ожидайте)..." -ForegroundColor Gray
+            
+            # ИСПРАВЛЕННЫЙ ЗАПУСК: единая строка аргументов (спасает от пробелов в пути) и жесткое ожидание (-Wait)
+            Start-Process msiexec.exe -ArgumentList "/i `"$WarpMsi`" /qn /norestart START_WPF_AS_USER=0" -Wait -NoNewWindow
+            
             Remove-Item $WarpMsi -ErrorAction SilentlyContinue
+            
+            # ВАЛИДАЦИЯ УСТАНОВКИ: если файл не появился, тормозим скрипт
+            if (-not (Test-Path $WarpCli)) {
+                Write-Host "`n❌ Критическая ошибка: Установка завершена, но исполняемый файл warp-cli.exe не найден." -ForegroundColor Red
+                Write-Host "Возможно, антивирус заблокировал распаковку или требуются права администратора." -ForegroundColor Yellow
+                Write-Host "Решение: Установите Cloudflare WARP вручную с официального сайта https://1.1.1.1" -ForegroundColor Gray
+                Stop-Process -Id $ZapretJob.Id -Force -ErrorAction SilentlyContinue
+                Stop-Process -Name "winws" -Force -ErrorAction SilentlyContinue
+                Pause; Exit
+            }
+            
+            Write-Host "-> Служба Cloudflare WARP успешно установлена!" -ForegroundColor Green
             Start-Sleep -Seconds 2
-        } catch { Write-Host "Критическая ошибка: Сбой при инсталляции Cloudflare WARP." -ForegroundColor Red; Pause; Exit }
+        } catch { 
+            Write-Host "`n❌ Критическая ошибка: Сбой при загрузке или инсталляции Cloudflare WARP." -ForegroundColor Red
+            Stop-Process -Id $ZapretJob.Id -Force -ErrorAction SilentlyContinue
+            Stop-Process -Name "winws" -Force -ErrorAction SilentlyContinue
+            Pause; Exit 
+        }
     }
 
     # Configure Cloudflare WARP service startup type to Manual
@@ -398,4 +418,3 @@ while ($true) {
         }
     }
 }
-
