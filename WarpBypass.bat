@@ -1,4 +1,4 @@
-﻿<# : RUN
+<# : RUN
 @echo off
 title WarpBypass v4.7 by BUSH
 cd /d "%~dp0"
