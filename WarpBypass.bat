@@ -326,7 +326,7 @@ function Get-LocalBypassVersion {
 function Get-RemoteBypassVersion {
     try {
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
-        $ver = (Invoke-WebRequest -Uri "$BypassListBaseUrl/ru_bypass_version.txt" -UseBasicParsing -TimeoutSec 5).Content.Trim()
+        $ver = (Invoke-WebRequest -Uri "$BypassListBaseUrl/ru_bypass_version.txt" -UseBasicParsing -TimeoutSec 5).Content -replace '[\s\r\n]',''
         return $ver
     } catch { return $null }
 }
@@ -350,8 +350,13 @@ function Update-BypassLists {
     }
     
     if (-not $Silent) {
-        if ($LocalVer) { Write-Host "  Обновление: v$LocalVer -> v$RemoteVer" -ForegroundColor Cyan }
-        else            { Write-Host "  Первая загрузка списков (v$RemoteVer)..." -ForegroundColor Cyan }
+        if ($LocalVer -and $LocalVer -ne $RemoteVer) {
+            Write-Host "  Обновление: v$LocalVer -> v$RemoteVer" -ForegroundColor Cyan
+        } elseif (-not $LocalVer) {
+            Write-Host "  Первая загрузка списков (v$RemoteVer)..." -ForegroundColor Cyan
+        } else {
+            Write-Host "  Принудительная перезагрузка (v$RemoteVer)..." -ForegroundColor Yellow
+        }
     }
     
     try {
@@ -449,15 +454,18 @@ function Apply-RuBypassTemplate {
         $WarpSettings | Add-Member -MemberType NoteProperty -Name 'excluded_ips'   -Value $NewIps.ToArray()   -Force
         
         $Json = $WarpSettings | ConvertTo-Json -Depth 10 -Compress
+        
+        # CRITICAL: stop service BEFORE writing so it cannot overwrite our changes on restart
+        Write-Host "-> Остановка службы Cloudflare WARP..." -ForegroundColor Yellow
+        Stop-Service -Name "CloudflareWARP" -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Milliseconds 800
+        
         [System.IO.File]::WriteAllText($WarpSettingsFile, $Json, [System.Text.Encoding]::UTF8)
         
-        Write-Host "  Доменов добавлено:      $AddedDomains (всего: $($NewHosts.Count))" -ForegroundColor Green
+        Write-Host "  Доменов добавлено:       $AddedDomains (всего: $($NewHosts.Count))" -ForegroundColor Green
         Write-Host "  IP-диапазонов добавлено: $AddedIps (всего: $($NewIps.Count))" -ForegroundColor Green
         
-        # Restart WARP service to pick up changes
-        Write-Host "-> Перезапуск службы Cloudflare WARP..." -ForegroundColor Yellow
-        Stop-Service  -Name "CloudflareWARP" -Force -ErrorAction SilentlyContinue
-        Start-Sleep -Seconds 1
+        Write-Host "-> Запуск службы Cloudflare WARP..." -ForegroundColor Yellow
         Start-Service -Name "CloudflareWARP" -ErrorAction SilentlyContinue
         Start-Sleep -Seconds 2
         & $WarpCli --accept-tos connect | Out-Null
