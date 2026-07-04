@@ -504,7 +504,11 @@ function Apply-RuBypassTemplate {
     
     foreach ($ip in $IpRanges) {
         if (-not $ExistingIps.Contains($ip)) {
-            $Cmds.Add("tunnel ip add $ip")
+            if ($ip.Contains('/')) {
+                $Cmds.Add("tunnel ip add-range $ip")
+            } else {
+                $Cmds.Add("tunnel ip add $ip")
+            }
         }
     }
     
