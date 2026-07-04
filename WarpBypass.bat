@@ -445,8 +445,8 @@ function Apply-RuBypassTemplate {
             }
         }
         
-        $WarpSettings.excluded_hosts = $NewHosts.ToArray()
-        $WarpSettings.excluded_ips   = $NewIps.ToArray()
+        $WarpSettings | Add-Member -MemberType NoteProperty -Name 'excluded_hosts' -Value $NewHosts.ToArray() -Force
+        $WarpSettings | Add-Member -MemberType NoteProperty -Name 'excluded_ips'   -Value $NewIps.ToArray()   -Force
         
         $Json = $WarpSettings | ConvertTo-Json -Depth 10 -Compress
         [System.IO.File]::WriteAllText($WarpSettingsFile, $Json, [System.Text.Encoding]::UTF8)
