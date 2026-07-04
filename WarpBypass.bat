@@ -272,6 +272,10 @@ function Check-Updates {
     }
     
     if ($NeedUpdate) {
+        # Make sure no running winws is locking files
+        try { Stop-Process -Name "winws" -Force -ErrorAction SilentlyContinue *>$null } catch {}
+        Start-Sleep -Milliseconds 500
+        
         Write-Host "-> Загрузка компонентов маскировки трафика..." -ForegroundColor Yellow
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
         Invoke-WebRequest -Uri $ZapretUrl -OutFile $ZapretZip -UseBasicParsing -UserAgent "WarpBypass" -ErrorAction SilentlyContinue
@@ -279,7 +283,11 @@ function Check-Updates {
             if (Test-Path $ZapretDir) { Remove-Item $ZapretDir -Recurse -Force -ErrorAction SilentlyContinue }
             Expand-Archive -Path $ZapretZip -DestinationPath $StorageDir -Force
             $ExtractedDir = Get-ChildItem -Path $StorageDir -Directory | Where-Object { $_.Name -like "zapret-discord-youtube*" } | Select-Object -First 1
-            if ($ExtractedDir) { Rename-Item -Path $ExtractedDir.FullName -NewName "zapret" -Force }
+            if ($ExtractedDir) {
+                if (-not (Test-Path $ZapretDir)) { New-Item -ItemType Directory -Path $ZapretDir -Force | Out-Null }
+                Copy-Item -Path "$($ExtractedDir.FullName)\*" -Destination $ZapretDir -Recurse -Force -ErrorAction SilentlyContinue
+                Remove-Item $ExtractedDir.FullName -Recurse -Force -ErrorAction SilentlyContinue
+            }
             Remove-Item $ZapretZip -ErrorAction SilentlyContinue
             if ($global:LatestSHA) { Out-File -FilePath $VersionFile -InputObject $global:LatestSHA -Force }
         }
@@ -845,6 +853,10 @@ function Uninstall-WarpBypass {
     Write-Header
     Write-Host "              ПОЛНОЕ УДАЛЕНИЕ WARPBYPASS" -ForegroundColor Red
     Write-Host "=========================================================" -ForegroundColor DarkGray
+    
+    Write-Host "-> Остановка фоновых процессов маскировки трафика..." -ForegroundColor Yellow
+    try { Stop-Process -Name "winws" -Force -ErrorAction SilentlyContinue *>$null } catch {}
+    Start-Sleep -Seconds 1
     
 
     
