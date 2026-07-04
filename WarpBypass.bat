@@ -60,6 +60,16 @@ try { Stop-Service -Name "goodbyedpi" -Force -ErrorAction SilentlyContinue *> $n
 try { Stop-Process -Name "winws" -Force -ErrorAction SilentlyContinue *> $null } catch {}
 try { Stop-Process -Name "goodbyedpi" -Force -ErrorAction SilentlyContinue *> $null } catch {}
 try { Stop-Process -Name "Cloudflare WARP" -Force -ErrorAction SilentlyContinue *> $null } catch {}
+
+# Reset Cloudflare WARP service to clear any frozen connection states
+try {
+    if (Get-Service -Name "Cloudflare WARP" -ErrorAction SilentlyContinue) {
+        Stop-Service -Name "Cloudflare WARP" -Force -ErrorAction SilentlyContinue *> $null
+        Start-Sleep -Seconds 1
+        Start-Service -Name "Cloudflare WARP" -ErrorAction SilentlyContinue *> $null
+    }
+} catch {}
+
 try { if (Test-Path $WarpCli) { & $WarpCli --accept-tos disconnect -ErrorAction SilentlyContinue *> $null } } catch {}
 Clear-Host
 
@@ -80,6 +90,18 @@ if (Test-Path $ConfigPath) {
     $Config = New-Object PSObject -Property $DefaultConfig
     $Config | ConvertTo-Json | Set-Content $ConfigPath
 }
+
+# Disable WARP GUI client auto-start to prevent boot-time connection loops blocking internet
+try {
+    foreach ($Hive in @("HKLM", "HKCU")) {
+        $RegPath = "$Hive`:\Software\Microsoft\Windows\CurrentVersion\Run"
+        foreach ($KeyName in @("CloudflareWARP", "Cloudflare WARP")) {
+            if (Get-ItemProperty -Path $RegPath -Name $KeyName -ErrorAction SilentlyContinue) {
+                Remove-ItemProperty -Path $RegPath -Name $KeyName -Force -ErrorAction SilentlyContinue *> $null
+            }
+        }
+    }
+} catch {}
 
 if (-not (Test-Path $PingListPath)) {
     "discord.com`nyoutube.com`ngoogle.com" | Set-Content $PingListPath -Encoding UTF8
@@ -237,127 +259,165 @@ function Launch-Tunnel ($BatFile) {
     $Config.LastPreset = $BatFile
     Save-Config
     
-    Clear-Host
-    Write-Header
-    
-    if ($Config.DnsFix) {
-        Write-Host "-> Очистка локального кэша DNS-резолвера..." -ForegroundColor Yellow
-        ipconfig /flushdns | Out-Null
-    }
-    
-    Write-Host "-> Инициализация компонента winws..." -ForegroundColor Yellow
-    $ZapretJob = Start-Process -FilePath $BatFile -WorkingDirectory (Split-Path $BatFile) -WindowStyle Hidden -PassThru
-    Start-Sleep -Seconds 4
-    
-    if (-not (Test-Path $WarpCli)) {
-        Write-Host "-> Развертывание клиента Cloudflare WARP..." -ForegroundColor Green
-        $WarpMsi = "$StorageDir\Cloudflare_WARP.msi"
-        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
-        try {
-            Invoke-WebRequest -Uri "https://downloads.cloudflareclient.com/v1/download/windows/ga" -OutFile $WarpMsi -UseBasicParsing -UserAgent "WarpBypass"
-            
-            Write-Host "-> Выполнение тихой установки компонента (ожидайте)..." -ForegroundColor Gray
-            
-            # ИСПРАВЛЕННЫЙ ЗАПУСК: единая строка аргументов (спасает от пробелов в пути) и жесткое ожидание (-Wait)
-            Start-Process msiexec.exe -ArgumentList "/i `"$WarpMsi`" /qn /norestart START_WPF_AS_USER=0" -Wait -NoNewWindow
-            
-            Remove-Item $WarpMsi -ErrorAction SilentlyContinue
-            
-            # ВАЛИДАЦИЯ УСТАНОВКИ: если файл не появился, тормозим скрипт
-            if (-not (Test-Path $WarpCli)) {
-                Write-Host "`n❌ Критическая ошибка: Установка завершена, но исполняемый файл warp-cli.exe не найден." -ForegroundColor Red
-                Write-Host "Возможно, антивирус заблокировал распаковку или требуются права администратора." -ForegroundColor Yellow
-                Write-Host "Решение: Установите Cloudflare WARP вручную с официального сайта https://1.1.1.1" -ForegroundColor Gray
-                Stop-Process -Id $ZapretJob.Id -Force -ErrorAction SilentlyContinue
-                Stop-Process -Name "winws" -Force -ErrorAction SilentlyContinue
-                Pause; Exit
-            }
-            
-            Write-Host "-> Служба Cloudflare WARP успешно установлена!" -ForegroundColor Green
-            Start-Sleep -Seconds 2
-        } catch { 
-            Write-Host "`n❌ Критическая ошибка: Сбой при загрузке или инсталляции Cloudflare WARP." -ForegroundColor Red
-            Stop-Process -Id $ZapretJob.Id -Force -ErrorAction SilentlyContinue
-            Stop-Process -Name "winws" -Force -ErrorAction SilentlyContinue
-            Pause; Exit 
+    try {
+        Clear-Host
+        Write-Header
+        
+        if ($Config.DnsFix) {
+            Write-Host "-> Очистка локального кэша DNS-резолвера..." -ForegroundColor Yellow
+            ipconfig /flushdns | Out-Null
         }
-    }
+        
+        Write-Host "-> Инициализация компонента winws..." -ForegroundColor Yellow
+        $ZapretJob = Start-Process -FilePath $BatFile -WorkingDirectory (Split-Path $BatFile) -WindowStyle Hidden -PassThru
+        Start-Sleep -Seconds 4
+        
+        if (-not (Test-Path $WarpCli)) {
+            Write-Host "-> Развертывание клиента Cloudflare WARP..." -ForegroundColor Green
+            $WarpMsi = "$StorageDir\Cloudflare_WARP.msi"
+            [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
+            try {
+                Invoke-WebRequest -Uri "https://downloads.cloudflareclient.com/v1/download/windows/ga" -OutFile $WarpMsi -UseBasicParsing -UserAgent "WarpBypass"
+                
+                Write-Host "-> Выполнение тихой установки компонента (ожидайте)..." -ForegroundColor Gray
+                
+                # ИСПРАВЛЕННЫЙ ЗАПУСК: единая строка аргументов (спасает от пробелов в пути) и жесткое ожидание (-Wait)
+                Start-Process msiexec.exe -ArgumentList "/i `"$WarpMsi`" /qn /norestart START_WPF_AS_USER=0" -Wait -NoNewWindow
+                
+                Remove-Item $WarpMsi -ErrorAction SilentlyContinue
+                
+                # ВАЛИДАЦИЯ УСТАНОВКИ: если файл не появился, тормозим скрипт
+                if (-not (Test-Path $WarpCli)) {
+                    Write-Host "`n❌ Критическая ошибка: Установка завершена, но исполняемый файл warp-cli.exe не найден." -ForegroundColor Red
+                    Write-Host "Возможно, антивирус заблокировал распаковку или требуются права администратора." -ForegroundColor Yellow
+                    Write-Host "Решение: Установите Cloudflare WARP вручную с официального сайта https://1.1.1.1" -ForegroundColor Gray
+                    Pause; Exit
+                }
+                
+                Write-Host "-> Служба Cloudflare WARP успешно установлена!" -ForegroundColor Green
+                Start-Sleep -Seconds 2
+            } catch { 
+                Write-Host "`n❌ Критическая ошибка: Сбой при загрузке или инсталляции Cloudflare WARP." -ForegroundColor Red
+                Pause; Exit 
+            }
+        }
 
-    # Configure Cloudflare WARP service startup type to Manual
-    Set-Service -Name "Cloudflare WARP" -StartupType Manual -ErrorAction SilentlyContinue
+        # Configure Cloudflare WARP service startup type to Manual
+        Set-Service -Name "Cloudflare WARP" -StartupType Manual -ErrorAction SilentlyContinue
 
-    Write-Host "-> Перезапуск системной службы Cloudflare WARP..." -ForegroundColor Yellow
-    Stop-Service -Name "Cloudflare WARP" -Force -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 1
-    Start-Service -Name "Cloudflare WARP" -ErrorAction SilentlyContinue
-    Stop-Process -Name "Cloudflare WARP" -Force -ErrorAction SilentlyContinue
-
-    Write-Host "-> Аутентификация и установка туннеля..." -ForegroundColor Yellow
-    & $WarpCli --accept-tos register 2>$null | Out-Null
-    & $WarpCli --accept-tos registration new 2>$null | Out-Null
-    & $WarpCli --accept-tos connect | Out-Null
-
-    $Timeout = 30
-    $Connected = $false
-    while ($Timeout -gt 0) {
-        $WarpStatus = & $WarpCli --accept-tos status | Out-String
-        if ($WarpStatus -and $WarpStatus.Contains("Connected") -and -not $WarpStatus.Contains("Connecting")) { $Connected = $true; break }
+        Write-Host "-> Перезапуск системной службы Cloudflare WARP..." -ForegroundColor Yellow
+        Stop-Service -Name "Cloudflare WARP" -Force -ErrorAction SilentlyContinue
         Start-Sleep -Seconds 1
-        $Timeout--
-    }
+        Start-Service -Name "Cloudflare WARP" -ErrorAction SilentlyContinue
+        Stop-Process -Name "Cloudflare WARP" -Force -ErrorAction SilentlyContinue
 
-    if (-not $Connected) {
-        Write-Host "Ошибка: Отсутствует ответ от службы маршрутизации WARP." -ForegroundColor Red
-        & $WarpCli --accept-tos disconnect | Out-Null
+        Write-Host "-> Аутентификация и установка туннеля..." -ForegroundColor Yellow
+        & $WarpCli --accept-tos register 2>$null | Out-Null
+        & $WarpCli --accept-tos registration new 2>$null | Out-Null
+        & $WarpCli --accept-tos connect | Out-Null
+
+        $Timeout = 30
+        $Connected = $false
+        while ($Timeout -gt 0) {
+            $WarpStatus = & $WarpCli --accept-tos status | Out-String
+            if ($WarpStatus -and $WarpStatus.Contains("Connected") -and -not $WarpStatus.Contains("Connecting")) { $Connected = $true; break }
+            Start-Sleep -Seconds 1
+            $Timeout--
+        }
+
+        if (-not $Connected) {
+            Write-Host "Ошибка: Отсутствует ответ от службы маршрутизации WARP." -ForegroundColor Red
+            Pause; Exit
+        }
+
         Stop-Process -Id $ZapretJob.Id -Force -ErrorAction SilentlyContinue
         Stop-Process -Name "winws" -Force -ErrorAction SilentlyContinue
-        Pause; Exit
-    }
-
-    Stop-Process -Id $ZapretJob.Id -Force -ErrorAction SilentlyContinue
-    Stop-Process -Name "winws" -Force -ErrorAction SilentlyContinue
-    
-    $MyPID = $PID
-    Start-Process powershell -ArgumentList @('-NoProfile', '-WindowStyle', 'Hidden', '-Command', "while (Get-Process -Id $MyPID -ErrorAction SilentlyContinue) { Start-Sleep 1 }; & '$WarpCli' --accept-tos disconnect") -WindowStyle Hidden
-    
-    if ($Config.AutoPing -and (Test-Path $PingListPath)) {
-        Write-Host "`n====== [ ДИАГНОСТИКА УЗЛОВ (TCP Ping) ] ======" -ForegroundColor Cyan
-        Write-Host "Отображается время установки сессии (включает TLS Handshake)" -ForegroundColor DarkGray
         
-        $Domains = Get-Content $PingListPath | Where-Object { $_.Trim() -ne "" }
-        foreach ($Dom in $Domains) {
-            $CleanDom = $Dom.Trim() -replace "(?i)^https?://", "" -replace "/.*$", ""
+        $MyPID = $PID
+        Start-Process powershell -ArgumentList @('-NoProfile', '-WindowStyle', 'Hidden', '-Command', "while (Get-Process -Id $MyPID -ErrorAction SilentlyContinue) { Start-Sleep 1 }; & '$WarpCli' --accept-tos disconnect") -WindowStyle Hidden
+        
+        if ($Config.AutoPing -and (Test-Path $PingListPath)) {
+            Write-Host "`n====== [ ДИАГНОСТИКА УЗЛОВ (TCP Ping) ] ======" -ForegroundColor Cyan
+            Write-Host "Отображается время установки сессии (включает TLS Handshake)" -ForegroundColor DarkGray
             
-            try {
-                $TcpClient = New-Object System.Net.Sockets.TcpClient
-                $Watch = [System.Diagnostics.Stopwatch]::StartNew()
+            $Domains = Get-Content $PingListPath | Where-Object { $_.Trim() -ne "" }
+            foreach ($Dom in $Domains) {
+                $CleanDom = $Dom.Trim() -replace "(?i)^https?://", "" -replace "/.*$", ""
                 
-                $AsyncResult = $TcpClient.BeginConnect($CleanDom, 443, $null, $null)
-                $Success = $AsyncResult.AsyncWaitHandle.WaitOne(3000, $false)
-                
-                if ($Success) {
-                    $TcpClient.EndConnect($AsyncResult)
-                    $Watch.Stop()
-                    $PingMs = [math]::Round($Watch.Elapsed.TotalMilliseconds)
-                    Write-Host " [$CleanDom] : $PingMs ms" -ForegroundColor Green
-                } else {
-                    $Watch.Stop()
-                    Write-Host " [$CleanDom] : Превышено время ожидания" -ForegroundColor Red
+                try {
+                    $TcpClient = New-Object System.Net.Sockets.TcpClient
+                    $Watch = [System.Diagnostics.Stopwatch]::StartNew()
+                    
+                    $AsyncResult = $TcpClient.BeginConnect($CleanDom, 443, $null, $null)
+                    $Success = $AsyncResult.AsyncWaitHandle.WaitOne(3000, $false)
+                    
+                    if ($Success) {
+                        $TcpClient.EndConnect($AsyncResult)
+                        $Watch.Stop()
+                        $PingMs = [math]::Round($Watch.Elapsed.TotalMilliseconds)
+                        Write-Host " [$CleanDom] : $PingMs ms" -ForegroundColor Green
+                    } else {
+                        $Watch.Stop()
+                        Write-Host " [$CleanDom] : Превышено время ожидания" -ForegroundColor Red
+                    }
+                    $TcpClient.Close()
+                } catch {
+                    Write-Host " [$CleanDom] : Узел недоступен" -ForegroundColor Red
                 }
-                $TcpClient.Close()
-            } catch {
-                Write-Host " [$CleanDom] : Узел недоступен" -ForegroundColor Red
+            }
+            Write-Host "==============================================" -ForegroundColor Cyan
+        }
+        
+        Write-Host "`nТуннель WarpBypass успешно инициализирован." -ForegroundColor Green
+        Write-Host "Сеанс активен. Для отключения туннеля и сброса маршрутов закройте окно." -ForegroundColor Gray
+        Start-Sleep -Seconds 2
+        
+        # Интерактивное меню активной сессии
+        while ($true) {
+            try {
+                Clear-Host
+                Write-Header
+                Write-Host "              СЕАНС АКТИВЕН (Туннель WarpBypass)" -ForegroundColor Green
+                Write-Host "=========================================================" -ForegroundColor DarkGray
+                Write-Host " [S]  Параметры утилиты (Настройки)" -ForegroundColor Yellow
+                Write-Host " [Q]  Отключить туннель и выйти" -ForegroundColor Red
+                Write-Host "=========================================================" -ForegroundColor DarkGray
+                
+                $ExitInput = Read-Host "Команда"
+                $CleanInput = $ExitInput.Trim().ToLower()
+                
+                if ($CleanInput -eq 's') {
+                    Show-Settings
+                }
+                elseif ($CleanInput -eq 'q') {
+                    $Confirm = Read-Host "Вы действительно хотите отключить туннель и выйти? (Y/N)"
+                    if ($Confirm.Trim().ToLower() -match "^[yд]") {
+                        return
+                    }
+                }
+            }
+            catch [System.Management.Automation.PipelineStoppedException], [System.Management.Automation.Host.HostException] {
+                Write-Host "`n[!] Обнаружен сигнал прерывания (Ctrl+C)." -ForegroundColor Yellow
+                $Confirm = Read-Host "Вы действительно хотите отключить туннель и выйти? (Y/N)"
+                if ($Confirm.Trim().ToLower() -match "^[yд]") {
+                    return
+                }
             }
         }
-        Write-Host "==============================================" -ForegroundColor Cyan
     }
-    
-    Write-Host "`nТуннель WarpBypass успешно инициализирован." -ForegroundColor Green
-    Write-Host "Сеанс активен. Для отключения туннеля и сброса маршрутов закройте окно." -ForegroundColor Gray
-    
-    while ($true) {
-        $ExitInput = Read-Host "Для штатного завершения сеанса введите 'exit'"
-        if ($ExitInput.Trim().ToLower() -eq "exit") { & $WarpCli --accept-tos disconnect | Out-Null; Exit }
+    finally {
+        Write-Host "`n-> Деактивация туннелирования и очистка маршрутов..." -ForegroundColor Yellow
+        try {
+            if (Test-Path $WarpCli) {
+                & $WarpCli --accept-tos disconnect -ErrorAction SilentlyContinue *> $null
+            }
+            if ($ZapretJob) {
+                Stop-Process -Id $ZapretJob.Id -Force -ErrorAction SilentlyContinue *> $null
+            }
+            Stop-Process -Name "winws" -Force -ErrorAction SilentlyContinue *> $null
+        } catch {}
+        Write-Host "-> Сеанс завершен успешно." -ForegroundColor Green
+        Start-Sleep -Seconds 1
     }
 }
 

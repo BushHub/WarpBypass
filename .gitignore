@@ -1,0 +1,19 @@
+# Temp files and updaters
+*_new.bat
+*_updater.bat
+
+# Editor and IDE configurations
+.vscode/
+.idea/
+*.swp
+*.suo
+
+# Local backups and zip files
+*.bak
+*.zip
+WarpBypass (3).bat
+WarpBypass_old.bat
+
+# System files
+Thumbs.db
+Desktop.ini
