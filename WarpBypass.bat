@@ -372,6 +372,69 @@ function Update-BypassLists {
     }
 }
 
+function Invoke-ParallelWarpCli {
+    param(
+        [string[]]$CmdArgs,
+        [int]$ThrottleLimit = 30
+    )
+    
+    $warpCli = "C:\Program Files\Cloudflare\Cloudflare WARP\warp-cli.exe"
+    if (-not (Test-Path $warpCli)) {
+        # Fallback to variable if defined, or just warp-cli from PATH
+        $warpCli = if ($global:WarpCli) { $global:WarpCli } else { "warp-cli" }
+    }
+    
+    $jobs = [System.Collections.Generic.List[System.Diagnostics.Process]]::new()
+    $total = $CmdArgs.Count
+    $completed = 0
+    
+    foreach ($arg in $CmdArgs) {
+        # Check if we reached the throttle limit
+        while (($jobs | Where-Object { -not $_.HasExited }).Count -ge $ThrottleLimit) {
+            Start-Sleep -Milliseconds 20
+        }
+        
+        $argList = [System.Collections.ArrayList]::new()
+        $argList.Add("--accept-tos") | Out-Null
+        foreach ($part in $arg.Split(' ')) {
+            if ($part.Trim() -ne "") { $argList.Add($part.Trim()) | Out-Null }
+        }
+        
+        $psi = New-Object System.Diagnostics.ProcessStartInfo
+        $psi.FileName = $warpCli
+        $psi.Arguments = [string]::Join(" ", $argList.ToArray())
+        $psi.UseShellExecute = $false
+        $psi.CreateNoWindow = $true
+        
+        $p = New-Object System.Diagnostics.Process
+        $p.StartInfo = $psi
+        try {
+            [void]$p.Start()
+            $jobs.Add($p)
+        } catch {}
+        
+        $completedCount = ($jobs | Where-Object { $_.HasExited }).Count
+        if ($completedCount -ne $completed) {
+            $completed = $completedCount
+            $percent = [math]::Round(($completed / $total) * 100)
+            Write-Host -NoNewline "`r   Применение: $percent% ($completed/$total)"
+        }
+    }
+    
+    while (($jobs | Where-Object { -not $_.HasExited }).Count -gt 0) {
+        Start-Sleep -Milliseconds 50
+        $completedCount = ($jobs | Where-Object { $_.HasExited }).Count
+        if ($completedCount -ne $completed) {
+            $completed = $completedCount
+            $percent = [math]::Round(($completed / $total) * 100)
+            Write-Host -NoNewline "`r   Применение: $percent% ($completed/$total)"
+        }
+    }
+    
+    Write-Host ""
+    foreach ($p in $jobs) { $p.Dispose() }
+}
+
 function Apply-RuBypassTemplate {
     $DomainFile = "$BypassCacheDir\ru_bypass_domain.txt"
     $IpFile     = "$BypassCacheDir\ru_bypass_ip.txt"
@@ -387,7 +450,7 @@ function Apply-RuBypassTemplate {
         return
     }
     
-    Write-Host "-> Парсинг и применение списков..." -ForegroundColor Yellow
+    Write-Host "-> Парсинг и фильтрация списков обхода..." -ForegroundColor Yellow
     
     $Domains  = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     $IpRanges = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
@@ -408,72 +471,55 @@ function Apply-RuBypassTemplate {
         }
     }
     
-    # Patch settings.json directly — instant, no per-call warp-cli overhead
+    # Read existing exclusions to skip duplicates and avoid useless process spawns
+    $ExistingHosts = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    $ExistingIps   = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     $WarpSettingsFile = "C:\ProgramData\Cloudflare\settings.json"
-    if (-not (Test-Path $WarpSettingsFile)) {
-        Write-Host "❌ Файл настроек WARP не найден. Запустите туннель хотя бы раз." -ForegroundColor Red
-        return
+    
+    if (Test-Path $WarpSettingsFile) {
+        try {
+            $WarpSettings = Get-Content $WarpSettingsFile -Raw | ConvertFrom-Json
+            if ($WarpSettings.excluded_hosts) {
+                foreach ($e in $WarpSettings.excluded_hosts) {
+                    $k = if ($e -is [Array]) { $e[0] } else { $e }
+                    $ExistingHosts.Add($k) | Out-Null
+                }
+            }
+            if ($WarpSettings.excluded_ips) {
+                foreach ($e in $WarpSettings.excluded_ips) {
+                    $k = if ($e -is [Array]) { $e[0] } else { $e }
+                    $ExistingIps.Add($k) | Out-Null
+                }
+            }
+        } catch {}
     }
     
-    try {
-        $WarpSettings = Get-Content $WarpSettingsFile -Raw | ConvertFrom-Json
-        
-        # Build lookup sets for dedup
-        $ExistingHosts = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-        foreach ($e in $WarpSettings.excluded_hosts) {
-            $k = if ($e -is [Array]) { $e[0] } else { $e }
-            $ExistingHosts.Add($k) | Out-Null
+    $Cmds = [System.Collections.Generic.List[string]]::new()
+    
+    foreach ($dom in $Domains) {
+        if (-not $ExistingHosts.Contains($dom)) {
+            $Cmds.Add("tunnel host add $dom")
         }
-        $ExistingIps = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-        foreach ($e in $WarpSettings.excluded_ips) {
-            $k = if ($e -is [Array]) { $e[0] } else { $e }
-            $ExistingIps.Add($k) | Out-Null
+    }
+    
+    foreach ($ip in $IpRanges) {
+        if (-not $ExistingIps.Contains($ip)) {
+            $Cmds.Add("tunnel ip add $ip")
         }
+    }
+    
+    if ($Cmds.Count -gt 0) {
+        Write-Host "-> Добавление новых исключений в WARP ($($Cmds.Count) команд)..." -ForegroundColor Yellow
+        Invoke-ParallelWarpCli -CmdArgs $Cmds.ToArray() -ThrottleLimit 30
         
-        $NewHosts = [System.Collections.ArrayList]::new()
-        foreach ($e in $WarpSettings.excluded_hosts) { $NewHosts.Add($e) | Out-Null }
-        $AddedDomains = 0
-        foreach ($dom in $Domains) {
-            if ($ExistingHosts.Add($dom)) {
-                $NewHosts.Add([object[]]@($dom, "CLI exclude")) | Out-Null
-                $AddedDomains++
-            }
-        }
-        
-        $NewIps = [System.Collections.ArrayList]::new()
-        foreach ($e in $WarpSettings.excluded_ips) { $NewIps.Add($e) | Out-Null }
-        $AddedIps = 0
-        foreach ($ip in $IpRanges) {
-            if ($ExistingIps.Add($ip)) {
-                $NewIps.Add([object[]]@($ip, "CLI exclude")) | Out-Null
-                $AddedIps++
-            }
-        }
-        
-        $WarpSettings | Add-Member -MemberType NoteProperty -Name 'excluded_hosts' -Value $NewHosts.ToArray() -Force
-        $WarpSettings | Add-Member -MemberType NoteProperty -Name 'excluded_ips'   -Value $NewIps.ToArray()   -Force
-        
-        $Json = $WarpSettings | ConvertTo-Json -Depth 10 -Compress
-        
-        # CRITICAL: stop service BEFORE writing so it cannot overwrite our changes on restart
-        Write-Host "-> Остановка службы Cloudflare WARP..." -ForegroundColor Yellow
-        Stop-Service -Name "CloudflareWARP" -Force -ErrorAction SilentlyContinue
-        Start-Sleep -Milliseconds 800
-        
-        [System.IO.File]::WriteAllText($WarpSettingsFile, $Json, [System.Text.Encoding]::UTF8)
-        
-        Write-Host "  Доменов добавлено:       $AddedDomains (всего: $($NewHosts.Count))" -ForegroundColor Green
-        Write-Host "  IP-диапазонов добавлено: $AddedIps (всего: $($NewIps.Count))" -ForegroundColor Green
-        
-        Write-Host "-> Запуск службы Cloudflare WARP..." -ForegroundColor Yellow
-        Start-Service -Name "CloudflareWARP" -ErrorAction SilentlyContinue
-        Start-Sleep -Seconds 2
+        Write-Host "-> Применение завершено. Переподключение туннеля WARP..." -ForegroundColor Yellow
+        & $WarpCli --accept-tos disconnect | Out-Null
+        Start-Sleep -Seconds 1
         & $WarpCli --accept-tos connect | Out-Null
         $global:CachedWarpStatus = $null
         Write-Host "✅ Шаблон успешно применен!" -ForegroundColor Green
-        
-    } catch {
-        Write-Host "❌ Ошибка: $_" -ForegroundColor Red
+    } else {
+        Write-Host "✅ Все домены и IP-диапазоны уже есть в списке исключений WARP!" -ForegroundColor Green
     }
 }
 
