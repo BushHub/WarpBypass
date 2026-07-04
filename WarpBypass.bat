@@ -563,7 +563,7 @@ function Show-SplitTunnelSettings {
                 $WarpSettingsFile = "C:\ProgramData\Cloudflare\settings.json"
                 if (Test-Path $WarpSettingsFile) {
                     try {
-                        $WarpSettings = Get-Content $WarpSettingsFile -Raw | ConvertFrom-Json
+                        $WarpSettings = Get-Content $WarpSettingsFile -Raw -Encoding UTF8 | ConvertFrom-Json
                         
                         # 1. Parse and extract custom hosts (all hosts are custom)
                         $CustomHosts = @()
@@ -575,15 +575,14 @@ function Show-SplitTunnelSettings {
                         }
                         
                         # 2. Parse and extract custom IPs (filter out known WARP system defaults)
-                        $SystemIps = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-                        $SystemIps.UnionWith(@(
+                        $SystemIps = [System.Collections.Generic.HashSet[string]]::new([string[]]@(
                             "10.0.0.0/8", "100.64.0.0/10", "169.254.0.0/16", "172.16.0.0/12",
                             "192.0.0.0/24", "192.168.0.0/16", "224.0.0.0/24", "240.0.0.0/4",
                             "239.255.255.250/32", "255.255.255.255/32", "fe80::/10",
                             "fd00::/8", "ff01::/16", "ff02::/16", "ff03::/16", "ff04::/16",
                             "ff05::/16", "fc00::/7", "2620:149:a44::/48", "2403:300:a42::/48",
                             "2403:300:a51::/48", "2a01:b740:a42::/48"
-                        ))
+                        ), [System.StringComparer]::OrdinalIgnoreCase)
                         
                         $CustomIps = @()
                         if ($WarpSettings.excluded_ips) {
