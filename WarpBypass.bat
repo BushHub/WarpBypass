@@ -377,9 +377,9 @@ function Launch-Tunnel ($BatFile) {
             try {
                 Clear-Host
                 Write-Header
-                Write-Host "              СЕАНС АКТИВЕН (Туннель WarpBypass)" -ForegroundColor Green
+                Write-Host "              Сеанс активен" -ForegroundColor Green
                 Write-Host "=========================================================" -ForegroundColor DarkGray
-                Write-Host " [S]  Параметры утилиты (Настройки)" -ForegroundColor Yellow
+                Write-Host " [S]  Настройки" -ForegroundColor Yellow
                 Write-Host " [Q]  Отключить туннель и выйти" -ForegroundColor Red
                 Write-Host "=========================================================" -ForegroundColor DarkGray
                 
@@ -397,8 +397,7 @@ function Launch-Tunnel ($BatFile) {
                 }
             }
             catch [System.Management.Automation.PipelineStoppedException], [System.Management.Automation.Host.HostException] {
-                Write-Host "`n[!] Обнаружен сигнал прерывания (Ctrl+C)." -ForegroundColor Yellow
-                $Confirm = Read-Host "Вы действительно хотите отключить туннель и выйти? (Y/N)"
+                $Confirm = Read-Host "`nВы действительно хотите отключить туннель и выйти? (Y/N)"
                 if ($Confirm.Trim().ToLower() -match "^[yд]") {
                     return
                 }
@@ -406,7 +405,7 @@ function Launch-Tunnel ($BatFile) {
         }
     }
     finally {
-        Write-Host "`n-> Деактивация туннелирования и очистка маршрутов..." -ForegroundColor Yellow
+        Write-Host "`n-> Отключение туннеля и очистка маршрутов..." -ForegroundColor Yellow
         try {
             if (Test-Path $WarpCli) {
                 & $WarpCli --accept-tos disconnect -ErrorAction SilentlyContinue *> $null
