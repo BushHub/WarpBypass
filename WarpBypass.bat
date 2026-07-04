@@ -1235,6 +1235,17 @@ function Connect-WarpTunnel ($BatFile) {
     Start-Service -Name "CloudflareWARP" -ErrorAction SilentlyContinue
     Stop-Process -Name "Cloudflare WARP" -Force -ErrorAction SilentlyContinue
     
+    # Wait for daemon to be ready (up to 8 seconds)
+    $DaemonReady = $false
+    for ($i = 0; $i -lt 16; $i++) {
+        $StatusCheck = & $WarpCli --accept-tos status 2>&1 | Out-String
+        if ($StatusCheck -and $StatusCheck -notmatch "(?i)Unable to connect|not running") {
+            $DaemonReady = $true
+            break
+        }
+        Start-Sleep -Milliseconds 500
+    }
+    
     Write-Host "-> Подключение туннеля WARP..." -ForegroundColor Yellow
     $RegCheck = & $WarpCli --accept-tos registration show 2>$null | Out-String
     if (-not $RegCheck -or $RegCheck -match "(?i)error|not registered|No registration") {
