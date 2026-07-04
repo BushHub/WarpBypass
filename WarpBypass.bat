@@ -63,10 +63,10 @@ try { Stop-Process -Name "Cloudflare WARP" -Force -ErrorAction SilentlyContinue 
 
 # Reset Cloudflare WARP service to clear any frozen connection states
 try {
-    if (Get-Service -Name "Cloudflare WARP" -ErrorAction SilentlyContinue) {
-        Stop-Service -Name "Cloudflare WARP" -Force -ErrorAction SilentlyContinue *> $null
+    if (Get-Service -Name "CloudflareWARP" -ErrorAction SilentlyContinue) {
+        Stop-Service -Name "CloudflareWARP" -Force -ErrorAction SilentlyContinue *> $null
         Start-Sleep -Seconds 1
-        Start-Service -Name "Cloudflare WARP" -ErrorAction SilentlyContinue *> $null
+        Start-Service -Name "CloudflareWARP" -ErrorAction SilentlyContinue *> $null
     }
 } catch {}
 
@@ -303,12 +303,12 @@ function Launch-Tunnel ($BatFile) {
         }
 
         # Configure Cloudflare WARP service startup type to Manual
-        Set-Service -Name "Cloudflare WARP" -StartupType Manual -ErrorAction SilentlyContinue
+        Set-Service -Name "CloudflareWARP" -StartupType Manual -ErrorAction SilentlyContinue
 
         Write-Host "-> Перезапуск системной службы Cloudflare WARP..." -ForegroundColor Yellow
-        Stop-Service -Name "Cloudflare WARP" -Force -ErrorAction SilentlyContinue
+        Stop-Service -Name "CloudflareWARP" -Force -ErrorAction SilentlyContinue
         Start-Sleep -Seconds 1
-        Start-Service -Name "Cloudflare WARP" -ErrorAction SilentlyContinue
+        Start-Service -Name "CloudflareWARP" -ErrorAction SilentlyContinue
         Stop-Process -Name "Cloudflare WARP" -Force -ErrorAction SilentlyContinue
 
         Write-Host "-> Аутентификация и установка туннеля..." -ForegroundColor Yellow
