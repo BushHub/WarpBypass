@@ -160,7 +160,7 @@ function Check-AppUpdate {
                 $TempFile = "$env:TEMP\WarpBypass_new.bat"
                 $UpdaterBat = "$env:TEMP\WarpBypass_updater.bat"
                 
-                # ИСПРАВЛЕНИЕ BOM: Скачиваем файл напрямую, чтобы не сломать кодировку
+                # BOM FIX: Download the file directly to preserve encoding
                 Invoke-WebRequest -Uri $DownloadUrl -OutFile $TempFile -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop
                 
                 $UpdaterCode = "@echo off`nchcp 65001 >nul`ntimeout /t 2 /nobreak >nul`nmove /y `"$TempFile`" `"$BatPath`" >nul`nstart `"`" `"$BatPath`"`ndel `"%~f0`""
@@ -281,12 +281,12 @@ function Launch-Tunnel ($BatFile) {
                 
                 Write-Host "-> Выполнение тихой установки компонента (ожидайте)..." -ForegroundColor Gray
                 
-                # ИСПРАВЛЕННЫЙ ЗАПУСК: единая строка аргументов (спасает от пробелов в пути) и жесткое ожидание (-Wait)
+                # LAUNCH FIX: Use single argument string to support spaces in paths and wait for completion
                 Start-Process msiexec.exe -ArgumentList "/i `"$WarpMsi`" /qn /norestart START_WPF_AS_USER=0" -Wait -NoNewWindow
                 
                 Remove-Item $WarpMsi -ErrorAction SilentlyContinue
                 
-                # ВАЛИДАЦИЯ УСТАНОВКИ: если файл не появился, тормозим скрипт
+                # INSTALL VALIDATION: Stop execution if warp-cli.exe is not found
                 if (-not (Test-Path $WarpCli)) {
                     Write-Host "`n❌ Критическая ошибка: Установка завершена, но исполняемый файл warp-cli.exe не найден." -ForegroundColor Red
                     Write-Host "Возможно, антивирус заблокировал распаковку или требуются права администратора." -ForegroundColor Yellow
@@ -372,7 +372,7 @@ function Launch-Tunnel ($BatFile) {
         Write-Host "Сеанс активен. Для отключения туннеля и сброса маршрутов закройте окно." -ForegroundColor Gray
         Start-Sleep -Seconds 2
         
-        # Интерактивное меню активной сессии
+        # Interactive menu for the active session
         while ($true) {
             try {
                 Clear-Host
@@ -421,7 +421,7 @@ function Launch-Tunnel ($BatFile) {
     }
 }
 
-# Основной цикл
+# Main loop
 Clear-Host
 Write-Header
 
