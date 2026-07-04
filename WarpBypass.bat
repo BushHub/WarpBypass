@@ -443,7 +443,7 @@ if ($Config.AutoPreset -and $Config.LastPreset -and (Test-Path $Config.LastPrese
         $WaitSecs--
         if ([console]::KeyAvailable) { $Interrupted = $true; $Host.UI.RawUI.FlushInputBuffer(); break }
     }
-    if (-not $Interrupted) { Launch-Tunnel $Config.LastPreset }
+    if (-not $Interrupted) { Launch-Tunnel $Config.LastPreset; Exit }
 }
 
 while ($true) {
@@ -475,6 +475,7 @@ while ($true) {
         $choice = 0
         if ([int]::TryParse($input, [ref]$choice) -and $choice -ge 1 -and $choice -le $BatFiles.Count) {
             Launch-Tunnel $BatFiles[$choice - 1].FullName
+            Exit
         }
     }
 }
