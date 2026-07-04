@@ -560,17 +560,58 @@ function Show-SplitTunnelSettings {
                 if (Test-Path $WarpSettingsFile) {
                     try {
                         $WarpSettings = Get-Content $WarpSettingsFile -Raw | ConvertFrom-Json
-                        $ExHosts = @($WarpSettings.excluded_hosts | Where-Object { $_ -is [Array] -and $_[1] })
-                        $ExIps   = @($WarpSettings.excluded_ips   | Where-Object { $_ -is [Array] -and $_[1] })
-                        Write-Host "--- Исключенные домены: $($ExHosts.Count) ---" -ForegroundColor Yellow
-                        if ($ExHosts.Count -gt 0) {
-                            $ExHosts | ForEach-Object { Write-Host "  $($_[0])" -ForegroundColor Green }
-                        } else { Write-Host "  (пусто)" -ForegroundColor DarkGray }
-                        Write-Host "`n--- Исключенные IP-диапазоны: $($ExIps.Count) ---" -ForegroundColor Yellow
-                        if ($ExIps.Count -gt 0) {
-                            $ExIps | Select-Object -First 50 | ForEach-Object { Write-Host "  $($_[0])" -ForegroundColor Cyan }
-                            if ($ExIps.Count -gt 50) { Write-Host "  ... и ещё $($ExIps.Count - 50) диапазонов" -ForegroundColor DarkGray }
-                        } else { Write-Host "  (пусто)" -ForegroundColor DarkGray }
+                        
+                        # 1. Parse and extract custom hosts (all hosts are custom)
+                        $CustomHosts = @()
+                        if ($WarpSettings.excluded_hosts) {
+                            foreach ($entry in $WarpSettings.excluded_hosts) {
+                                $hostVal = if ($entry -is [Array]) { $entry[0] } else { $entry }
+                                if ($hostVal) { $CustomHosts += $hostVal }
+                            }
+                        }
+                        
+                        # 2. Parse and extract custom IPs (filter out known WARP system defaults)
+                        $SystemIps = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+                        $SystemIps.UnionWith(@(
+                            "10.0.0.0/8", "100.64.0.0/10", "169.254.0.0/16", "172.16.0.0/12",
+                            "192.0.0.0/24", "192.168.0.0/16", "224.0.0.0/24", "240.0.0.0/4",
+                            "239.255.255.250/32", "255.255.255.255/32", "fe80::/10",
+                            "fd00::/8", "ff01::/16", "ff02::/16", "ff03::/16", "ff04::/16",
+                            "ff05::/16", "fc00::/7", "2620:149:a44::/48", "2403:300:a42::/48",
+                            "2403:300:a51::/48", "2a01:b740:a42::/48"
+                        ))
+                        
+                        $CustomIps = @()
+                        if ($WarpSettings.excluded_ips) {
+                            foreach ($entry in $WarpSettings.excluded_ips) {
+                                $ipVal = if ($entry -is [Array]) { $entry[0] } else { $entry }
+                                if ($ipVal -and -not $SystemIps.Contains($ipVal)) {
+                                    $CustomIps += $ipVal
+                                }
+                            }
+                        }
+                        
+                        # 3. Clean Display (first 15 entries + summary)
+                        Write-Host "--- Кастомные домены (Hosts): $($CustomHosts.Count) ---" -ForegroundColor Yellow
+                        if ($CustomHosts.Count -gt 0) {
+                            $CustomHosts | Select-Object -First 15 | ForEach-Object { Write-Host "  $_" -ForegroundColor Green }
+                            if ($CustomHosts.Count -gt 15) {
+                                Write-Host "  ... и ещё $($CustomHosts.Count - 15) доменов" -ForegroundColor DarkGray
+                            }
+                        } else {
+                            Write-Host "  (пусто)" -ForegroundColor DarkGray
+                        }
+                        
+                        Write-Host "`n--- Кастомные IP-диапазоны (IPs): $($CustomIps.Count) ---" -ForegroundColor Yellow
+                        if ($CustomIps.Count -gt 0) {
+                            $CustomIps | Select-Object -First 15 | ForEach-Object { Write-Host "  $_" -ForegroundColor Cyan }
+                            if ($CustomIps.Count -gt 15) {
+                                Write-Host "  ... и ещё $($CustomIps.Count - 15) IP-диапазонов" -ForegroundColor DarkGray
+                            }
+                        } else {
+                            Write-Host "  (пусто)" -ForegroundColor DarkGray
+                        }
+                        
                     } catch {
                         Write-Host "Ошибка чтения файла настроек WARP." -ForegroundColor Red
                     }
