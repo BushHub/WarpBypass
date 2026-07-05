@@ -1,6 +1,6 @@
 <# : RUN
 @echo off
-title WarpBypass v4.7.1 by BUSH
+title WarpBypass v5.0 by BUSH
 cd /d "%~dp0"
 net session >nul 2>&1
 if %errorLevel% neq 0 (
@@ -20,10 +20,10 @@ $WarningPreference = 'SilentlyContinue'
 # Author: BUSH
 # =========================================================
 
-$AppVersion = "4.7.1"
+$AppVersion = "5.0"
 $RepoApiUrl = "https://api.github.com/repos/BushHub/WarpBypass/releases/latest"
 
-# Disable console Quick-Edit mode
+# Disable console Quick-Edit mode and set clean window title
 try {
     if (-not ("Win32.Win32Console" -as [type])) {
         $ConsoleCode = @'
@@ -33,13 +33,24 @@ try {
         public static extern bool GetConsoleMode(IntPtr hConsoleHandle, out uint lpMode);
         [DllImport("kernel32.dll", SetLastError = true)]
         public static extern bool SetConsoleMode(IntPtr hConsoleHandle, uint dwMode);
+        [DllImport("kernel32.dll")]
+        public static extern IntPtr GetConsoleWindow();
+        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        public static extern bool SetWindowText(IntPtr hwnd, string lpString);
 '@
         Add-Type -MemberDefinition $ConsoleCode -Name "Win32Console" -Namespace "Win32" -ErrorAction SilentlyContinue *> $null
     }
     $StdInputHandle = [Win32.Win32Console]::GetStdHandle(-10)
     $ConsoleMode = 0
     if ([Win32.Win32Console]::GetConsoleMode($StdInputHandle, [ref]$ConsoleMode)) {
-        [Win32.Win32Console]::SetConsoleMode($StdInputHandle, ($ConsoleMode -band -not 0x0040)) | Out-Null
+        # Disable Quick-Edit (0x0040) using extended flags (0x0080)
+        [Win32.Win32Console]::SetConsoleMode($StdInputHandle, (($ConsoleMode -band -not 0x0040) -bor 0x0080)) | Out-Null
+    }
+    
+    # Set clean window title bypassing conhost Administrator prefixing
+    $Hwnd = [Win32.Win32Console]::GetConsoleWindow()
+    if ($Hwnd -ne [IntPtr]::Zero) {
+        [Win32.Win32Console]::SetWindowText($Hwnd, "WarpBypass v$AppVersion by BUSH") | Out-Null
     }
 } catch {}
 
@@ -88,8 +99,9 @@ if (-not $FirstRun) {
             }
         }
         
-        if ($Config.AutoPing -eq $true) { $Config.AutoPing = 1 }
-        elseif ($Config.AutoPing -eq $false) { $Config.AutoPing = 0 }
+        if ($Config.AutoPing -is [bool]) {
+            if ($Config.AutoPing) { $Config.AutoPing = 1 } else { $Config.AutoPing = 0 }
+        }
     } catch { 
         $Config = New-Object PSObject -Property $DefaultConfig 
     }
@@ -115,6 +127,79 @@ if (-not (Test-Path $PingListPath)) {
 
 function Save-Config { $Config | ConvertTo-Json | Set-Content $ConfigPath }
 
+function Start-DownloadWithProgress {
+    param(
+        [string]$Uri,
+        [string]$OutFile,
+        [string]$Label = "Загрузка файла"
+    )
+    
+    try {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
+        $Request = [System.Net.HttpWebRequest]::Create($Uri)
+        $Request.UserAgent = "WarpBypass"
+        $Request.Timeout = 20000
+        
+        $Response = $Request.GetResponse()
+        $TotalBytes = $Response.ContentLength
+        $Stream = $Response.GetResponseStream()
+        $FileStream = New-Object IO.FileStream($OutFile, [IO.FileMode]::Create)
+        
+        $Buffer = New-Object byte[] 65536
+        $DownloadedBytes = 0
+        
+        try { [console]::CursorVisible = $false } catch {}
+        $Left = 0; $Top = 0
+        try {
+            $Left = [console]::CursorLeft
+            $Top = [console]::CursorTop
+        } catch {}
+        
+        while (($Read = $Stream.Read($Buffer, 0, $Buffer.Length)) -gt 0) {
+            $FileStream.Write($Buffer, 0, $Read)
+            $DownloadedBytes += $Read
+            
+            if ($TotalBytes -gt 0) {
+                $Percent = ($DownloadedBytes / $TotalBytes) * 100
+                $PercentInt = [int]$Percent
+                
+                $BarWidth = 20
+                $Filled = [int]($PercentInt * $BarWidth / 100)
+                $Empty = $BarWidth - $Filled
+                $Bar = ("█" * $Filled) + ("░" * $Empty)
+                
+                $TotalMb = [math]::Round($TotalBytes / 1MB, 1)
+                $CurrentMb = [math]::Round($DownloadedBytes / 1MB, 1)
+                
+                try { [console]::SetCursorPosition($Left, $Top) } catch {}
+                Write-Host "-> ${Label}: [$Bar] $PercentInt% ($CurrentMb MB / $TotalMb MB)   " -ForegroundColor Cyan -NoNewline
+            } else {
+                $CurrentMb = [math]::Round($DownloadedBytes / 1MB, 1)
+                try { [console]::SetCursorPosition($Left, $Top) } catch {}
+                Write-Host "-> ${Label}: $CurrentMb MB загружено...   " -ForegroundColor Cyan -NoNewline
+            }
+        }
+        
+        try { [console]::SetCursorPosition($Left, $Top) } catch {}
+        if ($TotalBytes -gt 0) {
+            $TotalMb = [math]::Round($TotalBytes / 1MB, 1)
+            Write-Host "-> ${Label}: [████████████████████] 100% ($TotalMb MB / $TotalMb MB)   " -ForegroundColor Green
+        } else {
+            Write-Host "-> ${Label}: Завершено!   " -ForegroundColor Green
+        }
+    }
+    catch {
+        throw $_
+    }
+    finally {
+        if ($FileStream) { $FileStream.Close(); $FileStream.Dispose() }
+        if ($Stream) { $Stream.Close(); $Stream.Dispose() }
+        if ($Response) { $Response.Close() }
+        try { [console]::CursorVisible = $true } catch {}
+    }
+}
+
+
 $LogoText = @'
  _    _                    _                               
 | |  | |                  | |                              
@@ -135,10 +220,9 @@ function Write-Header {
 function Start-SetupWizard {
     Clear-Host
     Write-Header
-    Write-Host "         ДОБРО ПОЖАЛОВАТЬ В МАСТЕР НАСТРОЙКИ v$AppVersion" -ForegroundColor Cyan
+    Write-Host "                 МАСТЕР ПЕРВОНАЧАЛЬНОЙ НАСТРОЙКИ" -ForegroundColor Cyan
     Write-Host "=========================================================" -ForegroundColor DarkGray
-    Write-Host " Приветствуем! WarpBypass поможет обойти блокировки сайтов" -ForegroundColor Gray
-    Write-Host " (YouTube, Discord и др.) через Cloudflare WARP и zapret." -ForegroundColor Gray
+    Write-Host " Приветствуем! WarpBypass поможет обойти блокировки через Cloudflare Warp." -ForegroundColor Gray
     Write-Host " Давайте настроим утилиту под ваши предпочтения за 2 шага." -ForegroundColor Gray
     Write-Host "=========================================================" -ForegroundColor DarkGray
     Write-Host ""
@@ -148,7 +232,7 @@ function Start-SetupWizard {
     $DnsFixChoice = Read-Host " 1. Очищать кэш DNS при каждом запуске? (Y/N) [Рекомендуется: Y]"
     if ($DnsFixChoice -match "^[NnНн]") { $Config.DnsFix = $false } else { $Config.DnsFix = $true }
     
-    $UpdateChoice = Read-Host " 2. Включить автоматическое обновление батника и zapret? (Y/N) [Рекомендуется: Y]"
+    $UpdateChoice = Read-Host " 2. Проверять и скачивать обновления автоматически? (Y/N) [Рекомендуется: Y]"
     if ($UpdateChoice -match "^[NnНн]") { $Config.AutoUpdate = $false } else { $Config.AutoUpdate = $true }
     
     # Шаг 2: Стратегия обхода
@@ -156,13 +240,12 @@ function Start-SetupWizard {
     Write-Header
     Write-Host "                 СТРАТЕГИЯ ОБХОДА" -ForegroundColor Cyan
     Write-Host "=========================================================" -ForegroundColor DarkGray
-    Write-Host " Для работы необходимо выбрать пресет обхода блокировок." -ForegroundColor Gray
-    Write-Host " У разных провайдеров работают разные пресеты." -ForegroundColor Gray
+    Write-Host " Необходимо выбрать профиль работы службы Zapret." -ForegroundColor Gray
+    Write-Host " Для разных интернет-провайдеров подходят разные профили." -ForegroundColor Gray
     Write-Host ""
-    Write-Host " Выберите действие:" -ForegroundColor White
-    Write-Host "   1. Использовать стандартный пресет (general ALT12)" -ForegroundColor Green
-    Write-Host "      (Наиболее универсальный вариант, работает у многих)"
-    Write-Host "   2. Выбрать вручную позже в главном меню" -ForegroundColor Gray
+    Write-Host " Выберите вариант:" -ForegroundColor White
+    Write-Host "   1. Включить рекомендуемый профиль (general ALT12)" -ForegroundColor Green
+    Write-Host "   2. Настроить вручную в главном меню программы" -ForegroundColor Gray
     Write-Host ""
     
     $PresetChoice = ""
@@ -197,43 +280,46 @@ function Check-AppUpdate {
     try {
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
         $ReleaseInfo = Invoke-RestMethod -Uri $RepoApiUrl -UseBasicParsing -TimeoutSec 3 -ErrorAction Stop
-
+ 
         $RemoteVersionStr = $ReleaseInfo.tag_name -replace '(?i)^v', ''
         $RemoteVer = [version]$RemoteVersionStr
         $LocalVer  = [version]$AppVersion
-
-        if ($RemoteVer -gt $LocalVer -and $Config.IgnoredVersion -ne $RemoteVersionStr) {
-            Write-Host ""
-            Write-Host "=========================================================" -ForegroundColor Yellow
-            Write-Host " Доступен новый релиз WarpBypass: v$RemoteVersionStr (Текущая: v$AppVersion)" -ForegroundColor Green
-            Write-Host "=========================================================" -ForegroundColor Yellow
-            $UpdateChoice = Read-Host "Инициировать процесс обновления прямо сейчас? (Y/N)"
-            
-            if ($UpdateChoice -match "^[YyДд]") {
-                Write-Host "-> Загрузка и инсталляция пакета обновления..." -ForegroundColor Cyan
+ 
+        if ($RemoteVer -gt $LocalVer) {
+            if ($Config.IgnoredVersion -ne $RemoteVersionStr) {
+                Write-Host ""
+                Write-Host "=========================================================" -ForegroundColor Yellow
+                Write-Host " Доступна новая версия WarpBypass: v$RemoteVersionStr (Текущая: v$AppVersion)" -ForegroundColor Green
+                Write-Host "=========================================================" -ForegroundColor Yellow
+                $UpdateChoice = Read-Host "Инициировать процесс обновления прямо сейчас? (Y/N)"
                 
-                $DownloadUrl = "https://raw.githubusercontent.com/BushHub/WarpBypass/$($ReleaseInfo.tag_name)/WarpBypass.bat"
-                $BatPath = $env:WARP_BAT_PATH
-                $TempFile = "$env:TEMP\WarpBypass_new.bat"
-                $UpdaterBat = "$env:TEMP\WarpBypass_updater.bat"
-                
-                # BOM FIX: Download the file directly to preserve encoding
-                Invoke-WebRequest -Uri $DownloadUrl -OutFile $TempFile -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop
-                
-                $UpdaterCode = "@echo off`nchcp 65001 >nul`ntimeout /t 2 /nobreak >nul`nmove /y `"$TempFile`" `"$BatPath`" >nul`nstart `"`" `"$BatPath`"`ndel `"%~f0`""
-                [IO.File]::WriteAllText($UpdaterBat, $UpdaterCode, [System.Text.Encoding]::UTF8)
-                
-                Start-Process -FilePath $UpdaterBat -WindowStyle Hidden
-                Exit
-            } else {
-                $IgnoreChoice = Read-Host "Игнорировать версию $RemoteVersionStr при последующих проверках? (Y/N)"
-                if ($IgnoreChoice -match "^[YyДд]") {
-                    $Config.IgnoredVersion = $RemoteVersionStr
-                    Save-Config
-                    Write-Host "-> Версия $RemoteVersionStr внесена в список исключений." -ForegroundColor DarkGray
-                    Start-Sleep -Seconds 1
+                if ($UpdateChoice -match "^[YyДд]") {
+                    $DownloadUrl = "https://raw.githubusercontent.com/BushHub/WarpBypass/$($ReleaseInfo.tag_name)/WarpBypass.bat"
+                    $BatPath = $env:WARP_BAT_PATH
+                    $TempFile = "$env:TEMP\WarpBypass_new.bat"
+                    $UpdaterBat = "$env:TEMP\WarpBypass_updater.bat"
+                    
+                    Start-DownloadWithProgress -Uri $DownloadUrl -OutFile $TempFile -Label "Загрузка обновления"
+                    Write-Host "-> Установка пакета обновления..." -ForegroundColor Cyan
+                    
+                    $UpdaterCode = "@echo off`nchcp 65001 >nul`ntimeout /t 2 /nobreak >nul`nmove /y `"$TempFile`" `"$BatPath`" >nul`nstart `"`" `"$BatPath`"`ndel `"%~f0`""
+                    [IO.File]::WriteAllText($UpdaterBat, $UpdaterCode, [System.Text.Encoding]::UTF8)
+                    
+                    Start-Process -FilePath $UpdaterBat -WindowStyle Hidden
+                    Exit
+                } else {
+                    $IgnoreChoice = Read-Host "Игнорировать версию $RemoteVersionStr при последующих проверках? (Y/N)"
+                    if ($IgnoreChoice -match "^[YyДд]") {
+                        $Config.IgnoredVersion = $RemoteVersionStr
+                        Save-Config
+                        Write-Host "-> Версия $RemoteVersionStr внесена в список исключений." -ForegroundColor DarkGray
+                        Start-Sleep -Seconds 1
+                    }
                 }
             }
+        } else {
+            Write-Host "-> Установлена последняя актуальная версия." -ForegroundColor Green
+            Start-Sleep -Milliseconds 600
         }
     } catch {
         Write-Host "-> Ошибка синхронизации с GitHub API. Сервер недоступен." -ForegroundColor DarkGray
@@ -276,9 +362,7 @@ function Check-Updates {
         try { Stop-Process -Name "winws" -Force -ErrorAction SilentlyContinue *>$null } catch {}
         Start-Sleep -Milliseconds 500
         
-        Write-Host "-> Загрузка компонентов маскировки трафика..." -ForegroundColor Yellow
-        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
-        Invoke-WebRequest -Uri $ZapretUrl -OutFile $ZapretZip -UseBasicParsing -UserAgent "WarpBypass" -ErrorAction SilentlyContinue
+        Start-DownloadWithProgress -Uri $ZapretUrl -OutFile $ZapretZip -Label "Загрузка компонентов Zapret"
         if (Test-Path $ZapretZip) {
             if (Test-Path $ZapretDir) { Remove-Item $ZapretDir -Recurse -Force -ErrorAction SilentlyContinue }
             Expand-Archive -Path $ZapretZip -DestinationPath $StorageDir -Force
@@ -343,12 +427,15 @@ function Update-BypassLists {
     param([switch]$Force, [switch]$Silent)
     if (-not (Test-Path $BypassCacheDir)) { New-Item -ItemType Directory -Path $BypassCacheDir -Force | Out-Null }
     
-    if (-not $Silent) { Write-Host "-> Проверка версии списков обхода..." -ForegroundColor Yellow }
+    if (-not $Silent) { Write-Host "-> Проверка версии правил разделения трафика..." -ForegroundColor Yellow }
     $LocalVer  = Get-LocalBypassVersion
     $RemoteVer = Get-RemoteBypassVersion
     
     if ($null -eq $RemoteVer) {
-        if (-not $Silent) { Write-Host "  Нет связи с GitHub. Используются локальные списки." -ForegroundColor DarkGray }
+        if (-not $Silent) {
+            Write-Host "  Ошибка подключения к серверу обновлений." -ForegroundColor Red
+            Write-Host "  Используется локальная версия." -ForegroundColor DarkGray
+        }
         return $false
     }
     
@@ -389,7 +476,7 @@ function Invoke-ParallelWarpCli {
     $warpCli = "C:\Program Files\Cloudflare\Cloudflare WARP\warp-cli.exe"
     if (-not (Test-Path $warpCli)) {
         # Fallback to variable if defined, or just warp-cli from PATH
-        $warpCli = if ($global:WarpCli) { $global:WarpCli } else { "warp-cli" }
+        $warpCli = if ($script:WarpCli) { $script:WarpCli } else { "warp-cli" }
     }
     
     $jobs = [System.Collections.Generic.List[System.Diagnostics.Process]]::new()
@@ -544,11 +631,10 @@ function Show-SplitTunnelSettings {
         Write-Header
         Write-Host "            УПРАВЛЕНИЕ МАРШРУТИЗАЦИЕЙ (SPLIT TUNNEL)" -ForegroundColor Cyan
         Write-Host "=========================================================" -ForegroundColor DarkGray
-        Write-Host " [1] Применить шаблон обхода RU-нета$VerStr" -ForegroundColor Green
-        Write-Host "     Домены + IP-диапазоны -> напрямую, без VPN"
-        Write-Host " [2] Обновить списки обхода из репозитория" -ForegroundColor Yellow
-        Write-Host " [3] Просмотреть текущие исключения WARP" -ForegroundColor White
-        Write-Host " [4] Полный сброс исключений к заводским дефолтам" -ForegroundColor Red
+        Write-Host " [1] Применить шаблон RU-direct (Российские домены+ip в обход WARP)$VerStr" -ForegroundColor Green
+        Write-Host " [2] Проверить наличие обновлений шаблона" -ForegroundColor Yellow
+        Write-Host " [3] Просмотреть текущие настройки Split Tunneling" -ForegroundColor White
+        Write-Host " [4] Сброс настроек Split Tunneling" -ForegroundColor Red
         Write-Host " [0] Назад" -ForegroundColor Gray
         Write-Host "=========================================================" -ForegroundColor DarkGray
         
@@ -566,7 +652,7 @@ function Show-SplitTunnelSettings {
             "3" {
                 Clear-Host
                 Write-Header
-                Write-Host "           ТЕКУЩИЙ СПИСОК ИСКЛЮЧЕНИЙ WARP" -ForegroundColor Cyan
+                Write-Host "           ТЕКУЩИЕ НАСТРОЙКИ SPLIT TUNNELING" -ForegroundColor Cyan
                 Write-Host "=========================================================" -ForegroundColor DarkGray
                 $WarpSettingsFile = "C:\ProgramData\Cloudflare\settings.json"
                 if (Test-Path $WarpSettingsFile) {
@@ -603,7 +689,7 @@ function Show-SplitTunnelSettings {
                         }
                         
                         # 3. Clean Display (first 15 entries + summary)
-                        Write-Host "--- Кастомные домены (Hosts): $($CustomHosts.Count) ---" -ForegroundColor Yellow
+                        Write-Host "--- Домены: $($CustomHosts.Count) ---" -ForegroundColor Yellow
                         if ($CustomHosts.Count -gt 0) {
                             $CustomHosts | Select-Object -First 15 | ForEach-Object { Write-Host "  $_" -ForegroundColor Green }
                             if ($CustomHosts.Count -gt 15) {
@@ -613,7 +699,7 @@ function Show-SplitTunnelSettings {
                             Write-Host "  (пусто)" -ForegroundColor DarkGray
                         }
                         
-                        Write-Host "`n--- Кастомные IP-диапазоны (IPs): $($CustomIps.Count) ---" -ForegroundColor Yellow
+                        Write-Host "`n--- IP-адреса: $($CustomIps.Count) ---" -ForegroundColor Yellow
                         if ($CustomIps.Count -gt 0) {
                             $CustomIps | Select-Object -First 15 | ForEach-Object { Write-Host "  $_" -ForegroundColor Cyan }
                             if ($CustomIps.Count -gt 15) {
@@ -624,7 +710,7 @@ function Show-SplitTunnelSettings {
                         }
                         
                     } catch {
-                        Write-Host "Ошибка чтения файла настроек WARP." -ForegroundColor Red
+                        Write-Host "❌ Сбой обработки конфигурационного файла настроек Cloudflare WARP." -ForegroundColor Red
                     }
                 } else {
                     Write-Host "Файл настроек WARP не найден." -ForegroundColor Red
@@ -633,7 +719,7 @@ function Show-SplitTunnelSettings {
                 Read-Host "Нажмите Enter для возврата..." | Out-Null
             }
             "4" {
-                $Confirm = Read-Host "Вы действительно хотите сбросить все исключения к дефолтным? (Y/N)"
+                $Confirm = Read-Host "Очистить список исключений и вернуть туннелирование по умолчанию? (Y/N)"
                 if ($Confirm -match "^[YyДд]") {
                     Write-Host "-> Сброс исключений..." -ForegroundColor Yellow
                     & $WarpCli --accept-tos tunnel host reset | Out-Null
@@ -657,11 +743,11 @@ function Show-SplitTunnelSettings {
 function Start-Benchmark {
     Clear-Host
     Write-Header
-    Write-Host "         АВТО-ПОДБОР ЛУЧШЕГО ПРЕСЕТА (BENCHMARK)" -ForegroundColor Cyan
+    Write-Host "         АВТО-ПОДБОР СТРАТЕГИИ МАСКИРОВКИ" -ForegroundColor Cyan
     Write-Host "=========================================================" -ForegroundColor DarkGray
-    Write-Host " Тестирование доступности узлов напрямую через пресеты zapret." -ForegroundColor Gray
-    Write-Host " Это позволит найти лучший пресет для вашего провайдера." -ForegroundColor Gray
-    Write-Host " Пожалуйста, подождите, это займет некоторое время..." -ForegroundColor Gray
+    Write-Host " Утилита автоматически переберет разные профили работы Zapret и измерит связь с популярными сайтами." -ForegroundColor Gray
+    Write-Host " Мы определим, какой профиль работает быстрее и стабильнее всего в вашей сети." -ForegroundColor Gray
+    Write-Host " Ожидайте, это займет около минуты..." -ForegroundColor Gray
     Write-Host "=========================================================" -ForegroundColor DarkGray
     
     $ZapretDirFullName = if (Test-Path $ZapretDir) { (Get-Item $ZapretDir).FullName } else { "" }
@@ -751,7 +837,7 @@ function Start-Benchmark {
         Write-Host "[$($Best.Name)]" -ForegroundColor Green -NoNewline
         Write-Host " (обход: $($Best.SuccessRate)/3 узлов, средний пинг: $($Best.Ping) ms)" -ForegroundColor White
         Write-Host ""
-        $SaveChoice = Read-Host " Сделать эту стратегию автоматической по умолчанию? (Y/N)"
+        $SaveChoice = Read-Host " Применить выбранную стратегию как основную для автозапуска? (Y/N)"
         if ($SaveChoice -match "^[YyДд]") {
             $Config.LastPreset = $Best.Preset
             $Config.AutoPreset = $true
@@ -759,9 +845,7 @@ function Start-Benchmark {
             Write-Host " Настройки сохранены!" -ForegroundColor Green
         }
     } else {
-        Write-Host "❌ Ни один пресет не смог разблокировать узлы напрямую." -ForegroundColor Yellow
-        Write-Host " Возможно, провайдер блокирует все стратегии обхода DPI." -ForegroundColor Yellow
-        Write-Host " Выберите пресет вручную или обновите zapret." -ForegroundColor Gray
+        Write-Host "❌ Тестирование завершено: ни одна из стратегий не вернула успешный пинг." -ForegroundColor Red
     }
     Write-Host " Нажмите Enter для возврата..."
     Read-Host | Out-Null
@@ -834,7 +918,7 @@ function Show-PingSettings {
                 Start-Process notepad.exe $PingListPath -Wait
             }
             "d" {
-                $Confirm = Read-Host "Сбросить параметры пинга к дефолтным? (Y/N)"
+                $Confirm = Read-Host "Восстановить стандартные параметры проверки хостов? (Y/N)"
                 if ($Confirm.Trim().ToLower() -match "^[yд]") {
                     $Config.AutoPing = $DefaultConfig.AutoPing
                     $Config.PingInterval = $DefaultConfig.PingInterval
@@ -851,10 +935,10 @@ function Show-PingSettings {
 function Uninstall-WarpBypass {
     Clear-Host
     Write-Header
-    Write-Host "              ПОЛНОЕ УДАЛЕНИЕ WARPBYPASS" -ForegroundColor Red
+    Write-Host "              УДАЛЕНИЕ УТИЛИТЫ WARPBYPASS ИЗ СИСТЕМЫ" -ForegroundColor Red
     Write-Host "=========================================================" -ForegroundColor DarkGray
     
-    Write-Host "-> Остановка фоновых процессов маскировки трафика..." -ForegroundColor Yellow
+    Write-Host "-> Завершение фоновых модулей маскировки трафика..." -ForegroundColor Yellow
     try { Stop-Process -Name "winws" -Force -ErrorAction SilentlyContinue *>$null } catch {}
     Start-Sleep -Seconds 1
     
@@ -895,9 +979,9 @@ function Uninstall-WarpBypass {
     Start-Process powershell -ArgumentList $CmdArgs -WindowStyle Hidden
     
     Write-Host "=========================================================" -ForegroundColor DarkGray
-    Write-Host " Деинсталляция успешно завершена!" -ForegroundColor Green
-    Write-Host " Все службы удалены. Папка AppData будет стерта через секунду." -ForegroundColor Gray
-    Write-Host " Спасибо, что использовали WarpBypass!" -ForegroundColor Gray
+    Write-Host " Программа успешно удалена." -ForegroundColor Green
+    Write-Host " Службы и конфигурационные папки очищены." -ForegroundColor Gray
+    Write-Host " Спасибо за использование WarpBypass!" -ForegroundColor Gray
     Write-Host "=========================================================" -ForegroundColor DarkGray
     Start-Sleep -Seconds 4
     exit
@@ -914,8 +998,8 @@ function Show-CommonSettings {
         Write-Host " [3] Авто-синхронизация обновлений : " -NoNewline; if ($Config.AutoUpdate) { Write-Host "АКТИВНО" -ForegroundColor Green } else { Write-Host "ОТКЛЮЧЕНО" -ForegroundColor Red }
         Write-Host " [4] Задержка автозапуска профиля  : " -NoNewline; if ($Config.AutoPresetTimeout -eq 0) { Write-Host "0 сек (Мгновенный старт)" -ForegroundColor Cyan } else { Write-Host "$($Config.AutoPresetTimeout) сек" -ForegroundColor Green }
         Write-Host "=========================================================" -ForegroundColor DarkGray
-        Write-Host " [U] Полное удаление утилиты WarpBypass (Деинсталляция)" -ForegroundColor Red
-        Write-Host " [D] Сбросить общие параметры по умолчанию" -ForegroundColor Red
+        Write-Host " [U] Стереть утилиту WarpBypass из системы" -ForegroundColor Red
+        Write-Host " [D] Восстановить настройки по умолчанию" -ForegroundColor Red
         Write-Host " [0] Назад" -ForegroundColor Gray
         Write-Host "=========================================================" -ForegroundColor DarkGray
         
@@ -938,13 +1022,13 @@ function Show-CommonSettings {
                 }
             }
             "u" {
-                $Confirm = Read-Host "ВНИМАНИЕ: Это полностью удалит все службы и файлы WarpBypass. Продолжить? (Y/N)"
+                $Confirm = Read-Host "ВНИМАНИЕ: Все файлы конфигурации и зависимости программы будут безвозвратно удалены. Продолжить? (Y/N)"
                 if ($Confirm.Trim().ToLower() -match "^[yд]") {
                     Uninstall-WarpBypass
                 }
             }
             "d" {
-                $Confirm = Read-Host "Сбросить общие настройки к дефолтным? (Y/N)"
+                $Confirm = Read-Host "Восстановить настройки по умолчанию? (Y/N)"
                 if ($Confirm.Trim().ToLower() -match "^[yд]") {
                     $Config.AutoPreset = $DefaultConfig.AutoPreset
                     $Config.DnsFix = $DefaultConfig.DnsFix
@@ -964,15 +1048,15 @@ function Show-Settings {
     while ($true) {
         Clear-Host
         Write-Header
-        Write-Host "                 КОНФИГУРАЦИЯ (v$AppVersion)" -ForegroundColor Cyan
+        Write-Host "                 КОНФИГУРАЦИЯ" -ForegroundColor Cyan
         Write-Host "=========================================================" -ForegroundColor DarkGray
-        Write-Host " [1] Показать детальную статистику соединения WARP" -ForegroundColor White
+        Write-Host " [1] Статистика и метрики WARP" -ForegroundColor White
         Write-Host " [2] Настройки диагностики и пинга" -ForegroundColor White
         Write-Host " [3] Управление Split Tunneling (Маршрутизация)" -ForegroundColor White
-        Write-Host " [4] Общие параметры (Автозапуск, сброс DNS, обновления)" -ForegroundColor White
-        Write-Host " [B] Запустить авто-подбор пресетов (Бенчмарк)" -ForegroundColor Yellow
+        Write-Host " [4] Общие настройки" -ForegroundColor White
+        Write-Host " [B] Авто-подбор стратегии маскировки" -ForegroundColor Yellow
         Write-Host "=========================================================" -ForegroundColor DarkGray
-        Write-Host " [D] Полный сброс всех настроек к заводским дефолтам" -ForegroundColor Red
+        Write-Host " [D] Сброс всех настроек по умолчанию" -ForegroundColor Red
         Write-Host " [0] Вернуться в главное меню" -ForegroundColor Gray
         Write-Host "=========================================================" -ForegroundColor DarkGray
         
@@ -990,7 +1074,7 @@ function Show-Settings {
                     while ($true) {
                         Clear-Host
                         Write-Header
-                        Write-Host "          ДЕТАЛЬНАЯ СТАТИСТИКА СОЕДИНЕНИЯ WARP" -ForegroundColor Cyan
+                        Write-Host "                    СТАТИСТИКА WARP" -ForegroundColor Cyan
                         Write-Host "=========================================================" -ForegroundColor DarkGray
                         
                         $ProcessInfo = New-Object System.Diagnostics.ProcessStartInfo
@@ -1106,7 +1190,7 @@ function Show-Settings {
                     if (Test-Path $WarpCli) {
                         & $WarpCli --accept-tos mode warp | Out-Null
                     }
-                    Write-Host "Все настройки сброшены к заводским дефолтам!" -ForegroundColor Green
+                    Write-Host "Все настройки программы восстановлены по умолчанию!" -ForegroundColor Green
                     Start-Sleep -Seconds 2
                 }
             }
@@ -1187,11 +1271,11 @@ function Connect-WarpTunnel ($BatFile) {
     try { Stop-Process -Name "goodbyedpi" -Force -ErrorAction SilentlyContinue *> $null } catch {}
 
     if ($Config.DnsFix) {
-        Write-Host "-> Очистка локального кэша DNS-резолвера..." -ForegroundColor Yellow
+        Write-Host "-> Сброс системного кэша адресов DNS..." -ForegroundColor Yellow
         ipconfig /flushdns | Out-Null
     }
     
-    Write-Host "-> Инициализация компонента winws (Headless)..." -ForegroundColor Yellow
+    Write-Host "-> Запуск сетевого фильтра winws (в фоновом режиме)..." -ForegroundColor Yellow
     $ArgsStr = Get-ZapretArgs $BatFile
     $ZapretJob = $null
     if ($null -ne $ArgsStr) {
@@ -1203,22 +1287,20 @@ function Connect-WarpTunnel ($BatFile) {
     Start-Sleep -Seconds 4
     
     if (-not (Test-Path $WarpCli)) {
-        Write-Host "-> Развертывание клиента Cloudflare WARP..." -ForegroundColor Green
         $WarpMsi = "$StorageDir\Cloudflare_WARP.msi"
-        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
         try {
-            Invoke-WebRequest -Uri "https://downloads.cloudflareclient.com/v1/download/windows/ga" -OutFile $WarpMsi -UseBasicParsing -UserAgent "WarpBypass"
-            Write-Host "-> Выполнение тихой установки компонента (ожидайте)..." -ForegroundColor Gray
+            Start-DownloadWithProgress -Uri "https://downloads.cloudflareclient.com/v1/download/windows/ga" -OutFile $WarpMsi -Label "Загрузка Cloudflare WARP"
+            Write-Host "-> Установка Cloudflare WARP..." -ForegroundColor Gray
             Start-Process msiexec.exe -ArgumentList "/i `"$WarpMsi`" /qn /norestart START_WPF_AS_USER=0" -Wait -NoNewWindow
             Remove-Item $WarpMsi -ErrorAction SilentlyContinue
             if (-not (Test-Path $WarpCli)) {
                 Write-Host "`n❌ Критическая ошибка: Установка завершена, но исполняемый файл warp-cli.exe не найден." -ForegroundColor Red
                 Pause; Exit
             }
-            Write-Host "-> Служба Cloudflare WARP успешно установлена!" -ForegroundColor Green
+            Write-Host "-> Служба Cloudflare WARP успешно зарегистрирована в системе." -ForegroundColor Green
             Start-Sleep -Seconds 2
         } catch {
-            Write-Host "`n❌ Критическая ошибка: Сбой при загрузке или инсталляции Cloudflare WARP." -ForegroundColor Red
+            Write-Host "`n❌ Критическая ошибка: Сбой при загрузке или установке Cloudflare WARP." -ForegroundColor Red
             Pause; Exit
         }
     }
@@ -1229,13 +1311,14 @@ function Connect-WarpTunnel ($BatFile) {
         & $WarpCli --accept-tos mode warp | Out-Null
     }
     
-    Write-Host "-> Перезапуск системной службы Cloudflare WARP..." -ForegroundColor Yellow
+    Write-Host "-> Перезапуск сетевой службы Cloudflare WARP..." -ForegroundColor Yellow
     Stop-Service -Name "CloudflareWARP" -Force -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 1
     Start-Service -Name "CloudflareWARP" -ErrorAction SilentlyContinue
     Stop-Process -Name "Cloudflare WARP" -Force -ErrorAction SilentlyContinue
     
     # Wait for daemon to be ready (up to 8 seconds)
+    Write-Host "-> Ожидание готовности интерфейса Cloudflare WARP..." -ForegroundColor Yellow
     $DaemonReady = $false
     for ($i = 0; $i -lt 16; $i++) {
         $StatusCheck = & $WarpCli --accept-tos status 2>&1 | Out-String
@@ -1246,10 +1329,10 @@ function Connect-WarpTunnel ($BatFile) {
         Start-Sleep -Milliseconds 500
     }
     
-    Write-Host "-> Подключение туннеля WARP..." -ForegroundColor Yellow
+    Write-Host "-> Инициализация туннелирования трафика..." -ForegroundColor Yellow
     $RegCheck = & $WarpCli --accept-tos registration show 2>$null | Out-String
     if (-not $RegCheck -or $RegCheck -match "(?i)error|not registered|No registration") {
-        Write-Host "-> Первичная регистрация клиента WARP..." -ForegroundColor Yellow
+        Write-Host "-> Регистрация клиентского профиля в сети Cloudflare..." -ForegroundColor Yellow
         & $WarpCli --accept-tos registration new 2>$null | Out-Null
     }
     & $WarpCli --accept-tos connect | Out-Null
@@ -1276,25 +1359,26 @@ function Show-ActiveSessionMenu ($CurrentInput, $TimerVal) {
     
     Write-Host " Статус соединения WARP : " -NoNewline -ForegroundColor White
     if ($global:TunnelPaused) {
-        Write-Host "ПАУЗА (Остановлен)       " -ForegroundColor Yellow
+        Write-Host "ПАУЗА                     " -ForegroundColor Yellow
     } else {
-        if ($WarpState -eq "Connected") {
-            Write-Host "CONNECTED (Подключен)    " -ForegroundColor Green
-        } elseif ($WarpState -eq "Connecting") {
-            Write-Host "CONNECTING (Подключение...)" -ForegroundColor Yellow
-        } else {
-            Write-Host "$($WarpState.PadRight(25))" -ForegroundColor Red
+        switch ($WarpState.Trim()) {
+            "Connected"     { Write-Host "ПОДКЛЮЧЕН                 " -ForegroundColor Green }
+            "Connecting"    { Write-Host "ПОДКЛЮЧЕНИЕ...            " -ForegroundColor Yellow }
+            "Disconnected"  { Write-Host "ОТКЛЮЧЕН                  " -ForegroundColor Red }
+            "Disconnecting" { Write-Host "ОТКЛЮЧЕНИЕ...             " -ForegroundColor Yellow }
+            "Paused"        { Write-Host "ПАУЗА                     " -ForegroundColor Yellow }
+            default         { Write-Host "$($WarpState.PadRight(25))" -ForegroundColor Red }
         }
     }
     
     if (-not $global:TunnelPaused -and $global:PingResults -and $global:PingResults.Count -gt 0) {
         Write-Host "=========================================================" -ForegroundColor DarkGray
-        Write-Host " [ Доступность узлов (TCP Ping) ]" -NoNewline -ForegroundColor Cyan
+        Write-Host " [ Доступность хостов (Ping) ]" -NoNewline -ForegroundColor Cyan
         if ($Config.AutoPing -eq 2) {
             if ($TimerVal -eq "измерение...") {
                 Write-Host " (измерение...)            " -ForegroundColor Yellow
             } else {
-                Write-Host " (обновление через $($TimerVal)с)   " -ForegroundColor Gray
+                Write-Host " (следующий опрос через $($TimerVal) сек)   " -ForegroundColor Gray
             }
         } else {
             Write-Host "                                 " -ForegroundColor Gray
@@ -1438,7 +1522,7 @@ function Launch-Tunnel ($BatFile) {
                 Show-ActiveSessionMenu "" $TimeRemaining
             }
             elseif ($CleanInput -eq 'q') {
-                Write-Host "`nВы действительно хотите отключить туннель и выйти? (Y/N)" -ForegroundColor Yellow
+                Write-Host "`nВы действительно хотите отключить соединение и закрыть программу? (Y/N)" -ForegroundColor Yellow
                 $Confirm = [console]::ReadKey($true).KeyChar.ToString().ToLower()
                 if ($Confirm -match "[yд]") {
                     return $true
@@ -1494,7 +1578,7 @@ function Launch-Tunnel ($BatFile) {
         }
     }
     catch [System.Management.Automation.PipelineStoppedException], [System.Management.Automation.Host.HostException] {
-        Write-Host "`nВы действительно хотите отключить туннель и выйти? (Y/N)" -ForegroundColor Yellow
+        Write-Host "`nВы действительно хотите отключить соединение и закрыть программу? (Y/N)" -ForegroundColor Yellow
         $Confirm = [console]::ReadKey($true).KeyChar.ToString().ToLower()
         if ($Confirm -match "[yд]") {
             return $true
@@ -1538,8 +1622,8 @@ if ($Config.AutoPreset -and $Config.LastPreset -and (Test-Path $Config.LastPrese
     if ($WaitSecs -gt 0) {
         $Interrupted = $false
         $BatName = Split-Path $Config.LastPreset -Leaf
-        Write-Host "`n-> Автоматический запуск профиля [$BatName] через $WaitSecs сек." -ForegroundColor Cyan
-        Write-Host "   Нажмите любую клавишу для прерывания и перехода к конфигурации..." -ForegroundColor Yellow
+        Write-Host "`n-> Запуск профиля [$BatName] начнется через $WaitSecs сек." -ForegroundColor Cyan
+        Write-Host "   Нажмите любую клавишу для отмены и перехода в главное меню..." -ForegroundColor Yellow
         
         # Clear console input buffer completely
         while ([console]::KeyAvailable) { $null = [console]::ReadKey($true) }
@@ -1569,8 +1653,8 @@ while ($true) {
     $ZapretDirFullName = if (Test-Path $ZapretDir) { (Get-Item $ZapretDir).FullName } else { "" }
     $BatFiles = if ($ZapretDirFullName) { Get-ChildItem -Path $ZapretDirFullName -Filter "*.bat" | Where-Object { $_.Name -notmatch "service_remove|service_install" } } else { @() }
     
-    Write-Host " [1-9] Инициализировать профиль маршрутизации" -ForegroundColor White
-    Write-Host " [S]   Параметры утилиты" -ForegroundColor Yellow
+    Write-Host " [1-9] Запустить профиль Zapret" -ForegroundColor White
+    Write-Host " [S]   Настройки" -ForegroundColor Yellow
     Write-Host " [Q]   Завершить работу" -ForegroundColor Gray
     Write-Host "=========================================================" -ForegroundColor DarkGray
     
