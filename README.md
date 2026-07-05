@@ -79,11 +79,11 @@
 
 Вы можете поддержать проект, поставив **Star** этому репозиторию (кнопка сверху справа на этой странице).
 
-<a href="https://www.star-history.com/?repos=bushhub%2Fwarpbypass&type=date&legend=top-left">
+<a href="https://www.star-history.com/?repos=bushhub%2Fwarpbypass&type=timeline&legend=top-left">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=bushhub/warpbypass&type=date&theme=dark&legend=top-left&v=2" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=bushhub/warpbypass&type=date&legend=top-left&v=2" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=bushhub/warpbypass&type=date&legend=top-left&v=2" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=bushhub/warpbypass&type=timeline&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=bushhub/warpbypass&type=timeline&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=bushhub/warpbypass&type=timeline&legend=top-left" />
  </picture>
 </a>
 
