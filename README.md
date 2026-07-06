@@ -79,11 +79,11 @@
 
 Вы можете поддержать проект, поставив **Star** этому репозиторию (кнопка сверху справа на этой странице).
 
-<a href="https://www.star-history.com/?repos=bushhub%2Fwarpbypass&type=timeline&legend=top-left">
+<a href="https://www.star-history.com/?repos=bushhub%2Fwarpbypass&type=timeline&legend=bottom-right">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=bushhub/warpbypass&type=timeline&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=bushhub/warpbypass&type=timeline&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=bushhub/warpbypass&type=timeline&legend=top-left" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=bushhub/warpbypass&type=timeline&theme=dark&legend=top-left&sealed_token=yJpg5sLTQYSk-R0CxMm2hrXxTDW8fxCc_YJ2wROW4Boz_EJWtGd1Im7JJaUDu2WqZgK0e-w4HxL0PEhR-sOn_tQ82ZF31XcrmMxrg6O5t7fN5_YaSwLy8SmLcUJWUSbHbD02U0IaWBTtTSp8YFZagbX4xEWke5-9tykkZ_Z27XyX2bUyE8yUK4Gihc5v" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=bushhub/warpbypass&type=timeline&legend=top-left&sealed_token=yJpg5sLTQYSk-R0CxMm2hrXxTDW8fxCc_YJ2wROW4Boz_EJWtGd1Im7JJaUDu2WqZgK0e-w4HxL0PEhR-sOn_tQ82ZF31XcrmMxrg6O5t7fN5_YaSwLy8SmLcUJWUSbHbD02U0IaWBTtTSp8YFZagbX4xEWke5-9tykkZ_Z27XyX2bUyE8yUK4Gihc5v" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=bushhub/warpbypass&type=timeline&legend=top-left&sealed_token=yJpg5sLTQYSk-R0CxMm2hrXxTDW8fxCc_YJ2wROW4Boz_EJWtGd1Im7JJaUDu2WqZgK0e-w4HxL0PEhR-sOn_tQ82ZF31XcrmMxrg6O5t7fN5_YaSwLy8SmLcUJWUSbHbD02U0IaWBTtTSp8YFZagbX4xEWke5-9tykkZ_Z27XyX2bUyE8yUK4Gihc5v" />
  </picture>
 </a>
 
