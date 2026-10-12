@@ -128,6 +128,640 @@ function Stop-WinDivert {
     foreach ($Name in $Names) { & sc.exe delete $Name *> $null }
 }
 
+# ---------------------------------------------------------
+# Localization: string tables (ru / en)
+# Format: key=value, one per line. Placeholders: {0}, {1}. No backslashes.
+# ---------------------------------------------------------
+$StringsRu = @'
+yn=Д/Н
+prompt.choose=Выберите пункт
+prompt.cmd=Команда
+press.enter=Нажмите Enter, чтобы продолжить
+press.key=Нажмите любую клавишу, чтобы продолжить
+on=ВКЛ
+off=ВЫКЛ
+back=Назад
+none=нет
+na=н/д
+sec={0} сек
+ms.fmt={0} мс
+unit.mb=МБ
+recommended=рекомендуется
+fail.start=не удалось запустить warp-cli
+wiz.title=ПЕРВИЧНАЯ НАСТРОЙКА
+wiz.welcome1=WarpBypass обходит блокировки через Cloudflare WARP.
+wiz.welcome2=Настройка займёт два коротких шага.
+wiz.step1=Шаг 1 из 2. Параметры системы
+wiz.dns=Очищать кэш DNS при подключении? (рекомендуется)
+wiz.upd=Автоматически проверять обновления? (рекомендуется)
+wiz.profile.title=ПРОФИЛЬ ОБХОДА
+wiz.profile.hint=Шаг 2 из 2. Разным провайдерам подходят разные профили.
+wiz.profile.rec=Рекомендуемый профиль (general ALT12)
+wiz.profile.later=Выбрать позже в главном меню
+wiz.done=Первичная настройка завершена.
+wiz.saved=Настройки сохранены в {0}
+upd.checking=Проверка обновлений WarpBypass...
+upd.available=Доступна новая версия: v{0} (установлена v{1})
+upd.ask=Обновить сейчас?
+upd.downloading=Загрузка обновления
+upd.invalid=Загруженный файл не прошёл проверку, обновление отменено.
+upd.installing=Установка обновления...
+upd.ignore.ask=Больше не напоминать о версии {0}?
+upd.ignored=Версия {0} добавлена в исключения.
+upd.latest=Установлена последняя версия.
+upd.failed=Не удалось проверить обновления (GitHub недоступен).
+zap.offline=Нет подключения к сети. Работа в автономном режиме.
+zap.checking=Проверка компонентов Zapret...
+zap.audit.fail=Не удалось проверить компоненты, используется локальная копия.
+zap.download=Загрузка компонентов Zapret
+zap.badarchive=Архив не содержит ожидаемых файлов.
+zap.updfail=Не удалось обновить компоненты Zapret: {0}
+zap.missing=Компоненты Zapret не установлены, запуск профилей невозможен.
+dl.file=Загрузка файла
+dl.size={0} МБ загружено
+dl.done=Готово
+bl.checking=Проверка обновлений списка...
+bl.srvfail=Не удалось связаться с сервером обновлений.
+bl.local=Используется сохранённый список.
+bl.current=Список актуален (v{0}).
+bl.updating=Обновление списка: v{0} -> v{1}
+bl.first=Загрузка списка (v{0})...
+bl.reload=Повторная загрузка списка (v{0})...
+bl.updated=Список обновлён до v{0}.
+bl.error=Ошибка загрузки: {0}
+ru.loading=Загрузка списка сайтов и IP...
+ru.fail.list=Не удалось загрузить список сайтов. Проверьте подключение к интернету.
+ru.preparing=Подготовка правил...
+ru.adding=Добавление правил в WARP: {0} шт.
+ru.failed=Не удалось добавить правил: {0}
+ru.reconnect=Переподключение туннеля для применения правил...
+ru.done=Правила «Россия напрямую» применены.
+ru.already=Правила уже применены, добавлять нечего.
+ru.progress=Применение: {0}% ({1}/{2})
+route.title=МАРШРУТИЗАЦИЯ: РОССИЯ НАПРЯМУЮ
+route.sub1=Российские сайты и IP-адреса открываются напрямую,
+route.sub2=без WARP, чтобы банки и Госуслуги работали как обычно.
+route.state=Состояние
+route.state.on=ВКЛ (сайтов: {0}, IP-диапазонов: {1})
+route.list=Список правил
+route.list.ver=версия {0}
+route.list.none=не загружен
+route.i1=Включить (применить правила)
+route.i2=Обновить список сайтов и IP
+route.i3=Показать действующие правила
+route.i4=Выключить (удалить правила)
+route.rules.title=ДЕЙСТВУЮЩИЕ ПРАВИЛА
+route.sites=Сайты: {0}
+route.ips=IP-диапазоны: {0}
+route.more=... и ещё {0}
+route.confirm.off=Удалить все правила и направить весь трафик через WARP?
+route.removing=Удаление правил...
+route.removed=Правила удалены.
+bench.title=ПОДБОР ПРОФИЛЯ ОБХОДА
+bench.sub1=Программа по очереди запустит профили Zapret и проверит
+bench.sub2=TLS-соединение с YouTube и Discord. Так мы найдём профиль,
+bench.sub3=который лучше работает у вашего провайдера (около минуты).
+bench.nodir=Папка компонентов Zapret не найдена.
+bench.nofiles=Файлы профилей не найдены.
+bench.testing=Проверка профиля {0}...
+bench.ok=ДОСТУПЕН ({0}/{1} узлов, {2} мс)
+bench.fail=НЕ РАБОТАЕТ
+bench.results=РЕЗУЛЬТАТЫ
+bench.best=Рекомендуемый профиль:
+bench.best.d=доступно {0}/{1} узлов, средний отклик {2} мс
+bench.save.ask=Сохранить как профиль для автозапуска?
+bench.saved=Профиль сохранён.
+bench.none=Ни один профиль не обеспечил доступ к тестовым сайтам.
+bench.restore=Восстановление активного сеанса...
+ping.title=ПРОВЕРКА ДОСТУПНОСТИ
+ping.sub=Отклик популярных сервисов на экране подключения.
+ping.mode=Режим
+ping.mode.static=однократно при подключении
+ping.mode.dynamic=регулярно (каждые {0} сек)
+ping.i1=Сменить режим: выкл / однократно / регулярно
+ping.i2=Интервал регулярной проверки
+ping.i3=Изменить список узлов
+ping.i4=Сбросить настройки проверки
+ping.int.only=Интервал задаётся только в режиме «регулярно».
+ping.int.title=ИНТЕРВАЛ ПРОВЕРКИ
+ping.int.sub=Как часто обновлять доступность сервисов.
+ping.int.custom=Указать вручную
+ping.int.ask=Интервал в секундах (минимум 5)
+ping.int.bad=Некорректное значение, установлено 30 сек.
+ping.reset.ask=Вернуть стандартные параметры проверки?
+ping.reset.done=Параметры проверки сброшены.
+un.title=УДАЛЕНИЕ WARPBYPASS
+un.stop=Остановка модулей обхода...
+un.restore=Восстановление настроек Cloudflare WARP...
+un.registry=Очистка автозапуска в реестре...
+un.files=Удаление файлов программы...
+un.done=WarpBypass удалён.
+un.done2=Службы и папки с данными очищены.
+un.done3=Спасибо, что пользовались WarpBypass!
+conn.title=ПОДКЛЮЧЕНИЕ
+conn.sub=Автозапуск профиля и параметры подключения.
+conn.profile=Профиль по умолчанию
+conn.profile.none=не выбран
+conn.auto=Автозапуск профиля
+conn.delay=Задержка автозапуска
+conn.delay.instant=нет (сразу)
+conn.dns=Сброс кэша DNS
+conn.i1=Включить / выключить автозапуск профиля
+conn.i2=Задать задержку автозапуска
+conn.i3=Включить / выключить сброс кэша DNS
+conn.delay.ask=Задержка в секундах (0 - без задержки)
+conn.delay.bad=Некорректное значение.
+sys.title=СИСТЕМА
+sys.sub=Язык, ключ WARP+, обновления и удаление.
+sys.lang=Язык
+sys.key=Ключ WARP+
+sys.key.set=задан
+sys.key.unset=не задан
+sys.upd=Автообновление
+sys.ver=Версия
+sys.i1=Язык / Language
+sys.i2=Ключ WARP+
+sys.i3=Автообновление: вкл / выкл
+sys.i4=Сбросить настройки
+sys.i5=Удалить WarpBypass
+sys.reset.ask=Сбросить настройки программы? (язык и ключ WARP+ сохранятся)
+sys.reset.done=Настройки сброшены.
+sys.uninstall.ask=Удалить WarpBypass и все его данные безвозвратно?
+key.title=КЛЮЧ WARP+
+key.sub1=Введите лицензионный ключ из приложения WARP.
+key.sub2=Формат: xxxxxxxx-xxxxxxxx-xxxxxxxx. Пустой ввод удалит ключ.
+key.paste=Вставка: Ctrl+V или правая кнопка мыши.
+key.prompt=Ключ WARP+
+key.removed=Ключ удалён из настроек. Действующий ключ останется до перерегистрации.
+key.badformat=Некорректный формат ключа.
+key.accepted=Ключ принят клиентом WARP.
+key.checking=Переподключение для проверки ключа...
+key.plus.on=WARP+ активен.
+key.plus.off=Ключ принят, но WARP+ не активен (аккаунт Free): ключ недействителен или исчерпан лимит устройств.
+key.later=Проверить ключ можно после подключения: в строке IP появится [WARP+].
+key.rejected=Клиент WARP не принял ключ: он неверный, уже использован или исчерпан лимит устройств.
+key.kept=Ключ сохранён и будет применён при следующей регистрации.
+stat.title=СТАТИСТИКА WARP
+stat.sub=Состояние туннеля в реальном времени.
+stat.nowarp=Клиент Cloudflare WARP не установлен.
+stat.mtu=MTU туннеля
+stat.speed=Скорость (QUIC)
+stat.speed.fmt={0} Мбит/с ({1} МБ/с)
+stat.speed.low={0} Кбит/с
+stat.loss=Потери пакетов
+stat.dns=Задержка DNS (DoH)
+stat.api=Задержка API Cloudflare
+stat.fw=Задержка фильтра
+stat.refresh=Обновить показатели
+diag.title=ДИАГНОСТИКА
+diag.sub=Проверка связи и подбор профиля обхода.
+diag.i1=Проверка доступности
+diag.i1.d=режим и список узлов
+diag.i2=Статистика WARP
+diag.i2.d=MTU, скорость, задержки
+diag.i3=Подбор профиля
+diag.i3.d=поиск лучшего для вас
+set.title=НАСТРОЙКИ
+set.sub=Выберите раздел.
+set.i1=Подключение
+set.i1.d=автозапуск, задержка, DNS
+set.i2=Маршрутизация
+set.i2.d=Россия напрямую
+set.i3=Диагностика
+set.i3.d=доступность, статистика, подбор
+set.i4=Система
+set.i4.d=язык, ключ WARP+, обновления
+winws.start=Запуск модуля обхода (winws)...
+winws.fail=Модуль winws не запустился (возможен конфликт WinDivert или антивирус).
+conn.flushdns=Очистка кэша DNS...
+conn.dl.warp=Загрузка Cloudflare WARP
+conn.install.warp=Установка Cloudflare WARP...
+conn.warp.missing=Установка завершена, но warp-cli.exe не найден.
+conn.warp.installed=Cloudflare WARP установлен.
+conn.warp.failed=Не удалось загрузить или установить Cloudflare WARP.
+conn.restart.svc=Перезапуск службы Cloudflare WARP...
+conn.wait.daemon=Ожидание готовности службы WARP...
+conn.init=Подготовка подключения...
+conn.daemon.fail=Служба WARP не отвечает, регистрация пропущена.
+conn.register=Регистрация клиента в сети Cloudflare...
+conn.license=Применение ключа WARP+...
+conn.noresp=Служба WARP не отвечает. Подключение не выполнено.
+sess.status=Подключение WARP
+sess.ip=Внешний IP-адрес
+sess.ip.wait=определение...
+st.connected=ПОДКЛЮЧЕНО
+st.connecting=ПОДКЛЮЧЕНИЕ...
+st.disconnected=ОТКЛЮЧЕНО
+st.disconnecting=ОТКЛЮЧЕНИЕ...
+st.paused=ПАУЗА
+sess.avail=[ Доступность сервисов ]
+sess.measuring=проверка...
+sess.next=следующая через {0} сек
+sess.timeout=нет ответа
+sess.unreachable=недоступен
+sess.pause=Пауза
+sess.resume=Продолжить работу
+sess.reconnect=Переподключить туннель
+sess.changeip=Сменить IP-адрес
+sess.profile=Сменить профиль обхода
+sess.settings=Настройки
+sess.quit=Отключить туннель и выйти
+sess.measuring.wait=Проверка доступности сервисов...
+sess.pausing=Пауза туннеля...
+sess.resuming=Возобновление туннеля...
+sess.resume.fail=Не удалось возобновить туннель.
+sess.reconnecting=Переподключение туннеля...
+sess.reconnect.fail=Не удалось переподключить туннель.
+sess.quit.ask=Отключить туннель и закрыть программу?
+sess.closing=Отключение туннеля и очистка маршрутов...
+sess.closed=Сеанс завершён.
+ip.direct=напрямую
+ip.unknown=не определён
+ip.unknown.old=неизвестно
+ip.ask=Клиент WARP будет перерегистрирован, адрес может измениться. Продолжить?
+ip.step.reset=Сброс регистрации клиента WARP...
+ip.step.new=Новая регистрация выполнится при подключении.
+ip.step.route=Восстановление правил маршрутизации...
+ip.step.detect=Определение нового IP-адреса...
+ip.detect.fail=Не удалось определить новый IP. Нажмите Enter в меню для повторной проверки.
+ip.same=Адрес не изменился: {0} (Cloudflare выдал тот же).
+ip.changed=IP-адрес изменён: {0} -> {1}
+ip.reconnect.fail=Не удалось подключиться после перерегистрации.
+main.title=ГЛАВНОЕ МЕНЮ
+main.sub=Выберите профиль обхода для запуска (введите номер).
+main.last=последний запуск
+main.noprofiles=Профили не найдены. Проверьте подключение к интернету.
+main.settings=Настройки
+main.quit=Выход
+auto.starting=Запуск профиля «{0}» через {1} сек.
+auto.cancel=Нажмите любую клавишу, чтобы отменить и открыть меню.
+'@
+
+$StringsEn = @'
+yn=Y/N
+prompt.choose=Select an option
+prompt.cmd=Command
+press.enter=Press Enter to continue
+press.key=Press any key to continue
+on=ON
+off=OFF
+back=Back
+none=none
+na=n/a
+sec={0} sec
+ms.fmt={0} ms
+unit.mb=MB
+recommended=recommended
+fail.start=could not start warp-cli
+wiz.title=INITIAL SETUP
+wiz.welcome1=WarpBypass bypasses blocks through Cloudflare WARP.
+wiz.welcome2=Setup takes just two short steps.
+wiz.step1=Step 1 of 2. System options
+wiz.dns=Flush the DNS cache on connect? (recommended)
+wiz.upd=Check for updates automatically? (recommended)
+wiz.profile.title=BYPASS PROFILE
+wiz.profile.hint=Step 2 of 2. Different ISPs need different profiles.
+wiz.profile.rec=Recommended profile (general ALT12)
+wiz.profile.later=Choose later in the main menu
+wiz.done=Initial setup complete.
+wiz.saved=Settings saved to {0}
+upd.checking=Checking for WarpBypass updates...
+upd.available=A new version is available: v{0} (installed v{1})
+upd.ask=Update now?
+upd.downloading=Downloading update
+upd.invalid=The downloaded file failed verification, update cancelled.
+upd.installing=Installing update...
+upd.ignore.ask=Stop reminding about version {0}?
+upd.ignored=Version {0} added to the ignore list.
+upd.latest=You are running the latest version.
+upd.failed=Could not check for updates (GitHub unreachable).
+zap.offline=No network connection. Running in offline mode.
+zap.checking=Checking Zapret components...
+zap.audit.fail=Could not check components, using the local copy.
+zap.download=Downloading Zapret components
+zap.badarchive=The archive does not contain the expected files.
+zap.updfail=Could not update Zapret components: {0}
+zap.missing=Zapret components are not installed, profiles cannot be started.
+dl.file=Downloading file
+dl.size={0} MB downloaded
+dl.done=Done
+bl.checking=Checking for list updates...
+bl.srvfail=Could not reach the update server.
+bl.local=Using the saved list.
+bl.current=The list is up to date (v{0}).
+bl.updating=Updating the list: v{0} -> v{1}
+bl.first=Downloading the list (v{0})...
+bl.reload=Downloading the list again (v{0})...
+bl.updated=The list was updated to v{0}.
+bl.error=Download error: {0}
+ru.loading=Downloading the site and IP list...
+ru.fail.list=Could not download the site list. Check your internet connection.
+ru.preparing=Preparing rules...
+ru.adding=Adding rules to WARP: {0}
+ru.failed=Rules that could not be added: {0}
+ru.reconnect=Reconnecting the tunnel to apply the rules...
+ru.done="Russia direct" rules applied.
+ru.already=The rules are already applied, nothing to add.
+ru.progress=Applying: {0}% ({1}/{2})
+route.title=ROUTING: RUSSIA DIRECT
+route.sub1=Russian sites and IP addresses open directly,
+route.sub2=bypassing WARP, so banks and gov services work as usual.
+route.state=Status
+route.state.on=ON (sites: {0}, IP ranges: {1})
+route.list=Rule list
+route.list.ver=version {0}
+route.list.none=not downloaded
+route.i1=Enable (apply the rules)
+route.i2=Update the site and IP list
+route.i3=Show active rules
+route.i4=Disable (remove the rules)
+route.rules.title=ACTIVE RULES
+route.sites=Sites: {0}
+route.ips=IP ranges: {0}
+route.more=... and {0} more
+route.confirm.off=Remove all rules and send all traffic through WARP?
+route.removing=Removing rules...
+route.removed=Rules removed.
+bench.title=BYPASS PROFILE TEST
+bench.sub1=The program will start each Zapret profile in turn and
+bench.sub2=test the TLS connection to YouTube and Discord to find
+bench.sub3=the profile that works best on your ISP (about a minute).
+bench.nodir=The Zapret components folder was not found.
+bench.nofiles=No profile files found.
+bench.testing=Testing profile {0}...
+bench.ok=AVAILABLE ({0}/{1} hosts, {2} ms)
+bench.fail=NOT WORKING
+bench.results=RESULTS
+bench.best=Recommended profile:
+bench.best.d={0}/{1} hosts reachable, average response {2} ms
+bench.save.ask=Save it as the autostart profile?
+bench.saved=Profile saved.
+bench.none=No profile gave access to the test sites.
+bench.restore=Restoring the active session...
+ping.title=AVAILABILITY CHECK
+ping.sub=Response time of popular services on the session screen.
+ping.mode=Mode
+ping.mode.static=once when connecting
+ping.mode.dynamic=periodic (every {0} sec)
+ping.i1=Change mode: off / once / periodic
+ping.i2=Periodic check interval
+ping.i3=Edit the host list
+ping.i4=Reset check settings
+ping.int.only=The interval only applies to the periodic mode.
+ping.int.title=CHECK INTERVAL
+ping.int.sub=How often to refresh service availability.
+ping.int.custom=Enter manually
+ping.int.ask=Interval in seconds (minimum 5)
+ping.int.bad=Invalid value, set to 30 sec.
+ping.reset.ask=Restore the default check settings?
+ping.reset.done=Check settings reset.
+un.title=UNINSTALL WARPBYPASS
+un.stop=Stopping bypass modules...
+un.restore=Restoring Cloudflare WARP settings...
+un.registry=Cleaning startup entries in the registry...
+un.files=Removing program files...
+un.done=WarpBypass has been removed.
+un.done2=Services and data folders were cleaned up.
+un.done3=Thank you for using WarpBypass!
+conn.title=CONNECTION
+conn.sub=Profile autostart and connection options.
+conn.profile=Default profile
+conn.profile.none=not selected
+conn.auto=Profile autostart
+conn.delay=Autostart delay
+conn.delay.instant=none (instant)
+conn.dns=Flush DNS cache
+conn.i1=Turn profile autostart on / off
+conn.i2=Set the autostart delay
+conn.i3=Turn DNS cache flush on / off
+conn.delay.ask=Delay in seconds (0 - no delay)
+conn.delay.bad=Invalid value.
+sys.title=SYSTEM
+sys.sub=Language, WARP+ key, updates and uninstall.
+sys.lang=Language
+sys.key=WARP+ key
+sys.key.set=set
+sys.key.unset=not set
+sys.upd=Automatic updates
+sys.ver=Version
+sys.i1=Language / Язык
+sys.i2=WARP+ key
+sys.i3=Automatic updates: on / off
+sys.i4=Reset settings
+sys.i5=Uninstall WarpBypass
+sys.reset.ask=Reset program settings? (language and WARP+ key are kept)
+sys.reset.done=Settings reset.
+sys.uninstall.ask=Uninstall WarpBypass and delete all its data permanently?
+key.title=WARP+ KEY
+key.sub1=Enter the license key from the WARP app.
+key.sub2=Format: xxxxxxxx-xxxxxxxx-xxxxxxxx. Empty input removes the key.
+key.paste=Paste: Ctrl+V or right mouse button.
+key.prompt=WARP+ key
+key.removed=The key was removed from settings. An applied key stays until re-registration.
+key.badformat=Invalid key format.
+key.accepted=The key was accepted by the WARP client.
+key.checking=Reconnecting to verify the key...
+key.plus.on=WARP+ is active.
+key.plus.off=The key was accepted, but WARP+ is not active (Free account): the key is invalid or its device limit is reached.
+key.later=You can verify the key after connecting: the IP line will show [WARP+].
+key.rejected=The WARP client rejected the key: it is invalid, already used or its device limit is reached.
+key.kept=The key is saved and will be applied on the next registration.
+stat.title=WARP STATISTICS
+stat.sub=Live state of the tunnel.
+stat.nowarp=The Cloudflare WARP client is not installed.
+stat.mtu=Tunnel MTU
+stat.speed=Speed (QUIC)
+stat.speed.fmt={0} Mbit/s ({1} MB/s)
+stat.speed.low={0} Kbit/s
+stat.loss=Packet loss
+stat.dns=DNS latency (DoH)
+stat.api=Cloudflare API latency
+stat.fw=Filter latency
+stat.refresh=Refresh values
+diag.title=DIAGNOSTICS
+diag.sub=Connection checks and bypass profile test.
+diag.i1=Availability check
+diag.i1.d=mode and host list
+diag.i2=WARP statistics
+diag.i2.d=MTU, speed, latency
+diag.i3=Profile test
+diag.i3.d=find the best one for you
+set.title=SETTINGS
+set.sub=Choose a section.
+set.i1=Connection
+set.i1.d=autostart, delay, DNS
+set.i2=Routing
+set.i2.d=Russia direct
+set.i3=Diagnostics
+set.i3.d=availability, statistics, test
+set.i4=System
+set.i4.d=language, WARP+ key, updates
+winws.start=Starting the bypass module (winws)...
+winws.fail=The winws module did not start (possible WinDivert conflict or antivirus).
+conn.flushdns=Flushing the DNS cache...
+conn.dl.warp=Downloading Cloudflare WARP
+conn.install.warp=Installing Cloudflare WARP...
+conn.warp.missing=Installation finished, but warp-cli.exe was not found.
+conn.warp.installed=Cloudflare WARP installed.
+conn.warp.failed=Could not download or install Cloudflare WARP.
+conn.restart.svc=Restarting the Cloudflare WARP service...
+conn.wait.daemon=Waiting for the WARP service to be ready...
+conn.init=Preparing the connection...
+conn.daemon.fail=The WARP service is not responding, registration skipped.
+conn.register=Registering the client with Cloudflare...
+conn.license=Applying the WARP+ key...
+conn.noresp=The WARP service is not responding. Connection failed.
+sess.status=WARP connection
+sess.ip=External IP address
+sess.ip.wait=detecting...
+st.connected=CONNECTED
+st.connecting=CONNECTING...
+st.disconnected=DISCONNECTED
+st.disconnecting=DISCONNECTING...
+st.paused=PAUSED
+sess.avail=[ Service availability ]
+sess.measuring=checking...
+sess.next=next check in {0} sec
+sess.timeout=no response
+sess.unreachable=unreachable
+sess.pause=Pause
+sess.resume=Resume
+sess.reconnect=Reconnect the tunnel
+sess.changeip=Change IP address
+sess.profile=Change bypass profile
+sess.settings=Settings
+sess.quit=Disconnect and exit
+sess.measuring.wait=Checking service availability...
+sess.pausing=Pausing the tunnel...
+sess.resuming=Resuming the tunnel...
+sess.resume.fail=Could not resume the tunnel.
+sess.reconnecting=Reconnecting the tunnel...
+sess.reconnect.fail=Could not reconnect the tunnel.
+sess.quit.ask=Disconnect the tunnel and close the program?
+sess.closing=Disconnecting the tunnel and cleaning up routes...
+sess.closed=Session closed.
+ip.direct=direct
+ip.unknown=unknown
+ip.unknown.old=unknown
+ip.ask=The WARP client will be re-registered, the address may change. Continue?
+ip.step.reset=Resetting the WARP client registration...
+ip.step.new=A new registration is created when connecting.
+ip.step.route=Restoring routing rules...
+ip.step.detect=Detecting the new IP address...
+ip.detect.fail=Could not detect the new IP. Press Enter in the menu to retry.
+ip.same=The address did not change: {0} (Cloudflare assigned the same one).
+ip.changed=IP address changed: {0} -> {1}
+ip.reconnect.fail=Could not connect after re-registration.
+main.title=MAIN MENU
+main.sub=Choose a bypass profile to start (enter its number).
+main.last=last used
+main.noprofiles=No profiles found. Check your internet connection.
+main.settings=Settings
+main.quit=Exit
+auto.starting=Starting profile "{0}" in {1} sec.
+auto.cancel=Press any key to cancel and open the menu.
+'@
+
+function Initialize-Language ($Code) {
+    $global:Lang = if ($Code -eq "en") { "en" } else { "ru" }
+    if (-not $global:StrRu) { $global:StrRu = ConvertFrom-StringData -StringData $StringsRu }
+    $global:Str = if ($global:Lang -eq "en") { ConvertFrom-StringData -StringData $StringsEn } else { $global:StrRu }
+}
+
+function Get-DefaultLanguage {
+    try { if ((Get-Culture).TwoLetterISOLanguageName -eq "ru") { return "ru" } } catch {}
+    return "en"
+}
+
+function T {
+    param([string]$Key, [Parameter(ValueFromRemainingArguments = $true)]$A)
+    $S = $global:Str[$Key]
+    if ($null -eq $S) { $S = $global:StrRu[$Key] }
+    if ($null -eq $S) { return $Key }
+    if ($A -and @($A).Count -gt 0) { return ($S -f @($A)) }
+    return $S
+}
+
+# ---------------------------------------------------------
+# Console UI helpers (single screen layout, 57 columns)
+# ---------------------------------------------------------
+function Write-Rule ($Color = "DarkGray") { Write-Host ("=" * 57) -ForegroundColor $Color }
+
+function Write-Center ([string]$Text, $Color = "Cyan") {
+    $Pad = [math]::Max(0, [int][math]::Floor((57 - $Text.Length) / 2))
+    Write-Host ((" " * $Pad) + $Text) -ForegroundColor $Color
+}
+
+# Screen: logo, centered title, optional gray description lines, rule
+function Write-Screen ([string]$Title, [string[]]$Sub = @(), $TitleColor = "Cyan") {
+    Clear-Host
+    Write-Header
+    Write-Center $Title $TitleColor
+    foreach ($Line in $Sub) { Write-Host (" " + $Line) -ForegroundColor Gray }
+    Write-Rule
+}
+
+# "Label        : value" row
+function Write-Row ([string]$Label, [string]$Value, $Color = "Gray", [int]$Pad = 0) {
+    Write-Host (" " + $Label.PadRight(26) + ": ") -NoNewline -ForegroundColor White
+    Write-Host ($Value.PadRight($Pad)) -ForegroundColor $Color
+}
+
+# "[K] Action        description" menu item
+function Write-Item ([string]$Key, [string]$Text, $Color = "White", [string]$Desc = "") {
+    if ($Desc) {
+        Write-Host (" [" + $Key + "] " + $Text.PadRight(22)) -NoNewline -ForegroundColor $Color
+        Write-Host $Desc -ForegroundColor DarkGray
+    } else {
+        Write-Host (" [" + $Key + "] " + $Text) -ForegroundColor $Color
+    }
+}
+
+function Write-OnOff ([string]$Label, [bool]$On) {
+    if ($On) { Write-Row $Label (T 'on') "Green" } else { Write-Row $Label (T 'off') "DarkGray" }
+}
+
+function Write-Step ([string]$Text, $Color = "Yellow") { Write-Host (" -> " + $Text) -ForegroundColor $Color }
+function Write-Ok ([string]$Text) { Write-Host (" [OK] " + $Text) -ForegroundColor Green }
+function Write-Fail ([string]$Text) { Write-Host (" [!] " + $Text) -ForegroundColor Red }
+function Write-Note ([string]$Text, $Color = "Gray") { Write-Host ("      " + $Text) -ForegroundColor $Color }
+
+function Read-Choice {
+    return (Read-Host (" " + (T 'prompt.choose'))).Trim().ToLower()
+}
+
+function Read-Confirm ([string]$Text, [bool]$Default = $false) {
+    $Answer = (Read-Host (" " + $Text + " [" + (T 'yn') + "]")).Trim()
+    if ($Answer -eq "") { return $Default }
+    return ($Answer -match "^[YyДд]")
+}
+
+function Wait-Enter {
+    Write-Host (" " + (T 'press.enter')) -ForegroundColor Gray
+    Read-Host | Out-Null
+}
+
+# Quick-Edit is switched off for the session (accidental clicks freeze the console);
+# turn it on while the user types a pasted value so right-click paste works
+function Set-ConsoleQuickEdit ([bool]$Enable) {
+    try {
+        $Handle = [Win32.Win32Console]::GetStdHandle(-10)
+        $Mode = 0
+        if ([Win32.Win32Console]::GetConsoleMode($Handle, [ref]$Mode)) {
+            if ($Enable) { $Mode = $Mode -bor 0x0040 -bor 0x0080 } else { $Mode = ($Mode -band -bnot 0x0040) -bor 0x0080 }
+            [void][Win32.Win32Console]::SetConsoleMode($Handle, [uint32]$Mode)
+        }
+    } catch {}
+}
+
+function Read-LicenseKey {
+    Write-Note (T 'key.paste') "DarkGray"
+    Set-ConsoleQuickEdit $true
+    try { $Raw = Read-Host (" " + (T 'key.prompt')) } finally { Set-ConsoleQuickEdit $false }
+    return ($Raw -replace '[\s"''`]', '')
+}
+
+
 function Get-WarpStatus {
     if (Test-Path $WarpCli) {
         $Status = & $WarpCli --accept-tos status 2>$null | Out-String
@@ -176,7 +810,7 @@ function Update-CachedExternalIp {
     $global:IpOk = $false
     $global:IpAttempts = 0
     $global:Ip6Fallback = $null
-    $global:CurrentExternalIp = "определение..."
+    $global:CurrentExternalIp = T 'sess.ip.wait'
     Start-IpLookup 0
 }
 
@@ -193,7 +827,7 @@ function Receive-IpLookup {
             $Ip = $Matches[1]
             $Loc = if ($Text -match "(?m)^loc=(\S+)") { $Matches[1] } else { "" }
             $Warp = if ($Text -match "(?m)^warp=(\w+)") { $Matches[1] } else { "" }
-            $Tag = if ($Warp -eq "plus") { " [WARP+]" } elseif ($Warp -eq "on") { " [WARP]" } elseif ($Warp -eq "off") { " [напрямую]" } else { "" }
+            $Tag = if ($Warp -eq "plus") { " [WARP+]" } elseif ($Warp -eq "on") { " [WARP]" } elseif ($Warp -eq "off") { (" [" + (T 'ip.direct') + "]") } else { "" }
             $Shown = if ($Loc) { "$Ip ($Loc)$Tag" } else { "$Ip$Tag" }
             if ($Ip -notmatch ":") {
                 $global:CurrentExternalIp = $Shown
@@ -224,7 +858,7 @@ function Receive-IpLookup {
         $global:IpOk = $true
         return $true
     }
-    $global:CurrentExternalIp = "не определён"
+    $global:CurrentExternalIp = T 'ip.unknown'
     return $true
 }
 
@@ -252,7 +886,7 @@ $PingListPath = "$StorageDir\ping_list.txt"
 
 Clear-Host
 
-$DefaultConfig = @{ AutoPreset = $false; LastPreset = ""; AutoPresetTimeout = 3; AutoPing = 1; DnsFix = $false; IgnoredVersion = "0.0"; AutoUpdate = $true; PingInterval = 30; WarpLicense = "" }
+$DefaultConfig = @{ AutoPreset = $false; LastPreset = ""; AutoPresetTimeout = 0; Language = ""; AutoPing = 1; DnsFix = $false; IgnoredVersion = "0.0"; AutoUpdate = $true; PingInterval = 30; WarpLicense = "" }
 
 $FirstRun = -not (Test-Path $ConfigPath)
 if (-not $FirstRun) {
@@ -274,6 +908,9 @@ if (-not $FirstRun) {
     $Config = New-Object PSObject -Property $DefaultConfig
 }
 
+if ($Config.Language -ne "ru" -and $Config.Language -ne "en") { $Config.Language = Get-DefaultLanguage }
+Initialize-Language $Config.Language
+
 # Disable WARP GUI client auto-start to prevent boot-time connection loops blocking internet
 try {
     foreach ($Hive in @("HKLM", "HKCU")) {
@@ -290,11 +927,6 @@ if (-not (Test-Path $PingListPath)) {
     "discord.com`nyoutube.com`ngoogle.com" | Set-Content $PingListPath -Encoding UTF8
 }
 
-function Wait-Enter {
-    Write-Host " Нажмите Enter для продолжения..." -ForegroundColor Gray
-    Read-Host | Out-Null
-}
-
 function Set-WarpLicense ($Key) {
     if (-not $Key -or -not (Test-Path $WarpCli)) { return $false }
     & $WarpCli --accept-tos registration license $Key 2>&1 | Out-Null
@@ -307,8 +939,10 @@ function Start-DownloadWithProgress {
     param(
         [string]$Uri,
         [string]$OutFile,
-        [string]$Label = "Загрузка файла"
+        [string]$Label = ""
     )
+    if (-not $Label) { $Label = T 'dl.file' }
+    $UnitMb = T 'unit.mb'
     
     try {
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -348,20 +982,20 @@ function Start-DownloadWithProgress {
                 $CurrentMb = [math]::Round($DownloadedBytes / 1MB, 1)
                 
                 try { [console]::SetCursorPosition($Left, $Top) } catch {}
-                Write-Host "-> ${Label}: [$Bar] $PercentInt% ($CurrentMb MB / $TotalMb MB)   " -ForegroundColor Cyan -NoNewline
+                Write-Host (" -> ${Label}: [$Bar] $PercentInt% ($CurrentMb / $TotalMb $UnitMb)   ") -ForegroundColor Cyan -NoNewline
             } else {
                 $CurrentMb = [math]::Round($DownloadedBytes / 1MB, 1)
                 try { [console]::SetCursorPosition($Left, $Top) } catch {}
-                Write-Host "-> ${Label}: $CurrentMb MB загружено...   " -ForegroundColor Cyan -NoNewline
+                Write-Host (" -> ${Label}: " + (T 'dl.size' $CurrentMb) + "   ") -ForegroundColor Cyan -NoNewline
             }
         }
         
         try { [console]::SetCursorPosition($Left, $Top) } catch {}
         if ($TotalBytes -gt 0) {
             $TotalMb = [math]::Round($TotalBytes / 1MB, 1)
-            Write-Host "-> ${Label}: [████████████████████] 100% ($TotalMb MB / $TotalMb MB)   " -ForegroundColor Green
+            Write-Host (" -> ${Label}: [████████████████████] 100% ($TotalMb / $TotalMb $UnitMb)   ") -ForegroundColor Green
         } else {
-            Write-Host "-> ${Label}: Завершено!   " -ForegroundColor Green
+            Write-Host (" -> ${Label}: " + (T 'dl.done') + "   ") -ForegroundColor Green
         }
     }
     catch {
@@ -394,72 +1028,50 @@ function Write-Header {
 }
 
 function Start-SetupWizard {
+    # Step 0: language (shown in both languages)
     Clear-Host
     Write-Header
-    Write-Host "                 МАСТЕР ПЕРВОНАЧАЛЬНОЙ НАСТРОЙКИ" -ForegroundColor Cyan
-    Write-Host "=========================================================" -ForegroundColor DarkGray
-    Write-Host " Приветствуем! WarpBypass поможет обойти блокировки через Cloudflare Warp." -ForegroundColor Gray
-    Write-Host " Давайте настроим утилиту под ваши предпочтения за 2 шага." -ForegroundColor Gray
-    Write-Host "=========================================================" -ForegroundColor DarkGray
+    Write-Center "LANGUAGE / ЯЗЫК"
+    Write-Rule
+    Write-Item "1" "English" "White"
+    Write-Item "2" "Русский" "White"
+    Write-Rule
+    $DefaultLang = Get-DefaultLanguage
+    $DefaultNum = if ($DefaultLang -eq "ru") { "2" } else { "1" }
+    $Sel = (Read-Host (" Select / Выберите [1-2, Enter = " + $DefaultNum + "]")).Trim()
+    $Code = if ($Sel -eq "1") { "en" } elseif ($Sel -eq "2") { "ru" } else { $DefaultLang }
+    $Config.Language = $Code
+    Initialize-Language $Code
+
+    Write-Screen (T 'wiz.title') @((T 'wiz.welcome1'), (T 'wiz.welcome2'))
     Write-Host ""
-    
-    # Шаг 1: Базовые настройки
-    Write-Host " [Шаг 1 из 2] Базовые настройки системы:" -ForegroundColor White
-    $DnsFixChoice = Read-Host " 1. Очищать кэш DNS при каждом запуске? (Y/N) [Рекомендуется: Y]"
-    if ($DnsFixChoice -match "^[NnНн]") { $Config.DnsFix = $false } else { $Config.DnsFix = $true }
-    
-    $UpdateChoice = Read-Host " 2. Проверять и скачивать обновления автоматически? (Y/N) [Рекомендуется: Y]"
-    if ($UpdateChoice -match "^[NnНн]") { $Config.AutoUpdate = $false } else { $Config.AutoUpdate = $true }
-    
-    # Шаг 2: Стратегия обхода
-    Clear-Host
-    Write-Header
-    Write-Host "                 СТРАТЕГИЯ ОБХОДА" -ForegroundColor Cyan
-    Write-Host "=========================================================" -ForegroundColor DarkGray
-    Write-Host " Необходимо выбрать профиль работы службы Zapret." -ForegroundColor Gray
-    Write-Host " Для разных интернет-провайдеров подходят разные профили." -ForegroundColor Gray
-    Write-Host ""
-    Write-Host " Выберите вариант:" -ForegroundColor White
-    Write-Host "   1. Включить рекомендуемый профиль (general ALT12)" -ForegroundColor Green
-    Write-Host "   2. Настроить вручную в главном меню программы" -ForegroundColor Gray
-    Write-Host ""
-    
-    $PresetChoice = ""
-    while ($PresetChoice -notmatch "^[12]$") {
-        $PresetChoice = Read-Host " Выберите вариант (1-2)"
-    }
-    
-    if ($PresetChoice -eq "1") {
+    Write-Host (" " + (T 'wiz.step1')) -ForegroundColor White
+    $Config.DnsFix = Read-Confirm (T 'wiz.dns') $true
+    $Config.AutoUpdate = Read-Confirm (T 'wiz.upd') $true
+
+    Write-Screen (T 'wiz.profile.title') @((T 'wiz.profile.hint'))
+    Write-Item "1" (T 'wiz.profile.rec') "Green"
+    Write-Item "2" (T 'wiz.profile.later') "Gray"
+    Write-Rule
+    $Choice = ""
+    while ($Choice -notmatch "^[12]$") { $Choice = Read-Choice }
+    if ($Choice -eq "1") {
         $Config.LastPreset = "$ZapretDir\general (ALT12).bat"
         $Config.AutoPreset = $true
     }
-    
     Save-Config
-    
-    Write-Host "`n Первоначальная настройка успешно завершена!" -ForegroundColor Green
-    Write-Host " Конфигурация сохранена в AppData\Local\WarpBypass\config.json" -ForegroundColor Gray
-    Write-Host " Нажмите любую клавишу для продолжения..." -ForegroundColor White
-    [console]::ReadKey($true) | Out-Null
-}
 
-$IsOnline = $false
-try {
-    $p = New-Object System.Net.NetworkInformation.Ping
-    $res = $p.Send("8.8.8.8", 1500)
-    if ($res.Status -eq "Success") { $IsOnline = $true }
-} catch { }
-if (-not $IsOnline) {
-    # ICMP is often blocked: fall back to a TCP connect
-    try {
-        $Tcp = New-Object System.Net.Sockets.TcpClient
-        if ($Tcp.ConnectAsync("api.github.com", 443).Wait(2500)) { $IsOnline = $true }
-        $Tcp.Close()
-    } catch { }
+    Write-Host ""
+    Write-Ok (T 'wiz.done')
+    Write-Note (T 'wiz.saved' "AppData\Local\WarpBypass\config.json")
+    Write-Host ""
+    Write-Host (" " + (T 'press.key')) -ForegroundColor White
+    [console]::ReadKey($true) | Out-Null
 }
 
 function Check-AppUpdate {
     if (-not $IsOnline) { return }
-    Write-Host "-> Проверка обновлений WarpBypass..." -ForegroundColor Gray
+    Write-Step (T 'upd.checking') "Gray"
     
     try {
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -472,18 +1084,18 @@ function Check-AppUpdate {
         if ($RemoteVer -gt $LocalVer) {
             if ($Config.IgnoredVersion -ne $RemoteVersionStr) {
                 Write-Host ""
-                Write-Host "=========================================================" -ForegroundColor Yellow
-                Write-Host " Доступна новая версия WarpBypass: v$RemoteVersionStr (Текущая: v$AppVersion)" -ForegroundColor Green
-                Write-Host "=========================================================" -ForegroundColor Yellow
-                $UpdateChoice = Read-Host "Инициировать процесс обновления прямо сейчас? (Y/N)"
+                Write-Rule "Yellow"
+                Write-Host (" " + (T 'upd.available' $RemoteVersionStr $AppVersion)) -ForegroundColor Green
+                Write-Rule "Yellow"
+                $UpdateChoice = Read-Confirm (T 'upd.ask') $true
                 
-                if ($UpdateChoice -match "^[YyДд]") {
+                if ($UpdateChoice) {
                     $DownloadUrl = "https://raw.githubusercontent.com/BushHub/WarpBypass/$($ReleaseInfo.tag_name)/WarpBypass.bat"
                     $BatPath = $env:WARP_BAT_PATH
                     $TempFile = "$env:TEMP\WarpBypass_new.bat"
                     $UpdaterBat = "$env:TEMP\WarpBypass_updater.bat"
                     
-                    Start-DownloadWithProgress -Uri $DownloadUrl -OutFile $TempFile -Label "Загрузка обновления"
+                    Start-DownloadWithProgress -Uri $DownloadUrl -OutFile $TempFile -Label (T 'upd.downloading')
                     $NewText = Get-Content -LiteralPath $TempFile -Raw -Encoding UTF8
                     $Expected = $null
                     try {
@@ -496,11 +1108,11 @@ function Check-AppUpdate {
                     }
                     if (-not $Valid) {
                         Remove-Item -LiteralPath $TempFile -ErrorAction SilentlyContinue
-                        Write-Host "-> Загруженный файл не прошёл проверку, обновление отменено." -ForegroundColor Red
+                        Write-Fail (T 'upd.invalid')
                         Start-Sleep -Seconds 2
                         return
                     }
-                    Write-Host "-> Установка пакета обновления..." -ForegroundColor Cyan
+                    Write-Step (T 'upd.installing') "Cyan"
                     
                     $UpdaterCode = "@echo off`nchcp 65001 >nul`ntimeout /t 2 /nobreak >nul`nmove /y `"$TempFile`" `"$BatPath`" >nul`nstart `"`" `"$BatPath`"`ndel `"%~f0`""
                     [IO.File]::WriteAllText($UpdaterBat, $UpdaterCode, [System.Text.Encoding]::UTF8)
@@ -508,28 +1120,28 @@ function Check-AppUpdate {
                     Start-Process -FilePath $UpdaterBat -WindowStyle Hidden
                     Exit
                 } else {
-                    $IgnoreChoice = Read-Host "Игнорировать версию $RemoteVersionStr при последующих проверках? (Y/N)"
-                    if ($IgnoreChoice -match "^[YyДд]") {
+                    $IgnoreChoice = Read-Confirm (T 'upd.ignore.ask' $RemoteVersionStr) $false
+                    if ($IgnoreChoice) {
                         $Config.IgnoredVersion = $RemoteVersionStr
                         Save-Config
-                        Write-Host "-> Версия $RemoteVersionStr внесена в список исключений." -ForegroundColor DarkGray
+                        Write-Step (T 'upd.ignored' $RemoteVersionStr) "DarkGray"
                         Start-Sleep -Seconds 1
                     }
                 }
             }
         } else {
-            Write-Host "-> Установлена последняя актуальная версия." -ForegroundColor Green
+            Write-Ok (T 'upd.latest')
             Start-Sleep -Milliseconds 600
         }
     } catch {
-        Write-Host "-> Ошибка синхронизации с GitHub API. Сервер недоступен." -ForegroundColor DarkGray
+        Write-Step (T 'upd.failed') "DarkGray"
         Start-Sleep -Seconds 1
     }
 }
 
 function Check-Updates {
     if (-not $IsOnline) {
-        Write-Host "-> Сетевое подключение отсутствует. Оффлайн режим." -ForegroundColor DarkGray
+        Write-Step (T 'zap.offline') "DarkGray"
         return
     }
     
@@ -546,13 +1158,13 @@ function Check-Updates {
             try { $LastCheck = [DateTime]::Parse((Get-Content $LastCheckFile -Raw).Trim()) } catch { }
         }
         if (-not $LastCheck -or ($Today - $LastCheck).TotalDays -ge 3) {
-            Write-Host "-> Аудит зависимостей маскировки трафика..." -ForegroundColor Gray
+            Write-Step (T 'zap.checking') "Gray"
             try {
                 $UpdateInfo = Invoke-RestMethod -Uri $RepoAPI -UseBasicParsing -UserAgent "WarpBypass" -TimeoutSec 5 -ErrorAction Stop
                 $global:LatestSHA = $UpdateInfo.sha
                 $LocalSHA = if (Test-Path $VersionFile) { (Get-Content $VersionFile).Trim() } else { "" }
                 if ($LocalSHA -ne $global:LatestSHA) { $NeedUpdate = $true } else { Out-File -FilePath $LastCheckFile -InputObject ($Today.ToString()) -Force }
-            } catch { Write-Host "-> Ошибка проверки зависимостей. Используется локальный кэш." -ForegroundColor DarkGray }
+            } catch { Write-Step (T 'zap.audit.fail') "DarkGray" }
         }
     }
     
@@ -563,12 +1175,12 @@ function Check-Updates {
         
         $TmpDir = "$StorageDir\zapret_tmp"
         try {
-            Start-DownloadWithProgress -Uri $ZapretUrl -OutFile $ZapretZip -Label "Загрузка компонентов Zapret"
+            Start-DownloadWithProgress -Uri $ZapretUrl -OutFile $ZapretZip -Label (T 'zap.download')
             if (Test-Path $TmpDir) { Remove-Item $TmpDir -Recurse -Force -ErrorAction SilentlyContinue }
             Expand-Archive -Path $ZapretZip -DestinationPath $TmpDir -Force
             $ExtractedDir = Get-ChildItem -Path $TmpDir -Directory | Where-Object { $_.Name -like "zapret-discord-youtube*" } | Select-Object -First 1
             if (-not $ExtractedDir -or -not (Test-Path "$($ExtractedDir.FullName)\bin\winws.exe")) {
-                throw "Архив не содержит ожидаемых файлов."
+                throw (T 'zap.badarchive')
             }
             try { Stop-WinDivert } catch {}
             if (Test-Path $ZapretDir) { Remove-Item $ZapretDir -Recurse -Force -ErrorAction Stop }
@@ -577,8 +1189,8 @@ function Check-Updates {
             if ($global:LatestSHA) { Out-File -FilePath $VersionFile -InputObject $global:LatestSHA -Force; Out-File -FilePath $LastCheckFile -InputObject ((Get-Date).ToString()) -Force }
             $global:ZapretEnvBlock = $null
         } catch {
-            Write-Host "-> Не удалось обновить компоненты Zapret: $($_.Exception.Message)" -ForegroundColor Red
-            if (-not (Test-Path "$ZapretDir\bin\winws.exe")) { Write-Host "   Компоненты Zapret не установлены, запуск профилей невозможен." -ForegroundColor Red }
+            Write-Fail (T 'zap.updfail' $_.Exception.Message)
+            if (-not (Test-Path "$ZapretDir\bin\winws.exe")) { Write-Note (T 'zap.missing') "Red" }
             Start-Sleep -Seconds 2
         } finally {
             Remove-Item $ZapretZip -ErrorAction SilentlyContinue
@@ -636,30 +1248,30 @@ function Update-BypassLists {
     param([switch]$Force, [switch]$Silent)
     if (-not (Test-Path $BypassCacheDir)) { New-Item -ItemType Directory -Path $BypassCacheDir -Force | Out-Null }
     
-    if (-not $Silent) { Write-Host "-> Проверка обновлений списка..." -ForegroundColor Yellow }
+    if (-not $Silent) { Write-Step (T 'bl.checking') }
     $LocalVer  = Get-LocalBypassVersion
     $RemoteVer = Get-RemoteBypassVersion
     
     if ($null -eq $RemoteVer) {
         if (-not $Silent) {
-            Write-Host "  Не удалось связаться с сервером обновлений." -ForegroundColor Red
-            Write-Host "  Используется сохранённый список." -ForegroundColor DarkGray
+            Write-Note (T 'bl.srvfail') "Red"
+            Write-Note (T 'bl.local') "DarkGray"
         }
         return $false
     }
     
     if (-not $Force -and $LocalVer -eq $RemoteVer) {
-        if (-not $Silent) { Write-Host "  Список актуален (v$RemoteVer)." -ForegroundColor Green }
+        if (-not $Silent) { Write-Note (T 'bl.current' $RemoteVer) "Green" }
         return $false
     }
     
     if (-not $Silent) {
         if ($LocalVer -and $LocalVer -ne $RemoteVer) {
-            Write-Host "  Обновление: v$LocalVer -> v$RemoteVer" -ForegroundColor Cyan
+            Write-Note (T 'bl.updating' $LocalVer $RemoteVer) "Cyan"
         } elseif (-not $LocalVer) {
-            Write-Host "  Загрузка списка (v$RemoteVer)..." -ForegroundColor Cyan
+            Write-Note (T 'bl.first' $RemoteVer) "Cyan"
         } else {
-            Write-Host "  Повторная загрузка списка (v$RemoteVer)..." -ForegroundColor Yellow
+            Write-Note (T 'bl.reload' $RemoteVer) "Yellow"
         }
     }
     
@@ -668,10 +1280,10 @@ function Update-BypassLists {
         Invoke-WebRequest -Uri "$BypassListBaseUrl/ru_bypass_domain.txt" -OutFile "$BypassCacheDir\ru_bypass_domain.txt" -UseBasicParsing
         Invoke-WebRequest -Uri "$BypassListBaseUrl/ru_bypass_ip.txt"     -OutFile "$BypassCacheDir\ru_bypass_ip.txt"     -UseBasicParsing
         Set-Content -Path "$BypassCacheDir\ru_bypass_version.txt" -Value $RemoteVer -Encoding UTF8
-        if (-not $Silent) { Write-Host "  Список обновлён до v$RemoteVer." -ForegroundColor Green }
+        if (-not $Silent) { Write-Note (T 'bl.updated' $RemoteVer) "Green" }
         return $true
     } catch {
-        if (-not $Silent) { Write-Host "  Ошибка загрузки: $_" -ForegroundColor Red }
+        if (-not $Silent) { Write-Note (T 'bl.error' $_) "Red" }
         return $false
     }
 }
@@ -721,14 +1333,14 @@ function Invoke-ParallelWarpCli {
                 [void]$p.Start()
                 $Running.Add([PSCustomObject]@{ Proc = $p; Cmd = $CmdArgs[$Next]; Out = $p.StandardOutput.ReadToEndAsync(); Err = $p.StandardError.ReadToEndAsync() })
             } catch {
-                $Failures.Add("$($CmdArgs[$Next]) -> не удалось запустить warp-cli")
+                $Failures.Add("$($CmdArgs[$Next]) -> $(T 'fail.start')")
                 $Done++
             }
             $Next++
         }
         
         $percent = [math]::Round(($Done / [math]::Max(1, $Total)) * 100)
-        Write-Host -NoNewline "`r   Применение: $percent% ($Done/$Total)"
+        Write-Host -NoNewline ("`r      " + (T 'ru.progress' $percent $Done $Total))
         Start-Sleep -Milliseconds 30
     }
     
@@ -742,16 +1354,16 @@ function Apply-RuBypassTemplate {
     
     # Ensure lists exist, download if needed
     if (-not (Test-Path $DomainFile) -or -not (Test-Path $IpFile)) {
-        Write-Host "-> Загрузка списка сайтов и IP..." -ForegroundColor Yellow
+        Write-Step (T 'ru.loading')
         Update-BypassLists | Out-Null
     }
     
     if (-not (Test-Path $DomainFile)) {
-        Write-Host "❌ Не удалось загрузить список сайтов. Проверьте подключение к интернету." -ForegroundColor Red
+        Write-Fail (T 'ru.fail.list')
         return
     }
     
-    Write-Host "-> Подготовка правил..." -ForegroundColor Yellow
+    Write-Step (T 'ru.preparing')
     
     $Domains  = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     $IpRanges = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
@@ -824,22 +1436,22 @@ function Apply-RuBypassTemplate {
     }
     
     if ($Cmds.Count -gt 0) {
-        Write-Host "-> Добавление правил в WARP: $($Cmds.Count) шт...." -ForegroundColor Yellow
+        Write-Step (T 'ru.adding' $Cmds.Count)
         $Failures = @(Invoke-ParallelWarpCli -CmdArgs $Cmds.ToArray() -ThrottleLimit 30)
         if ($Failures.Count -gt 0) {
-            Write-Host "-> Не удалось добавить правил: $($Failures.Count)" -ForegroundColor Red
-            foreach ($F in ($Failures | Select-Object -First 5)) { Write-Host "   $F" -ForegroundColor DarkGray }
+            Write-Fail (T 'ru.failed' $Failures.Count)
+            foreach ($F in ($Failures | Select-Object -First 5)) { Write-Note $F "DarkGray" }
         }
         $WasConnected = ((Get-WarpStatus) -eq "Connected")
         
         if ($WasConnected -and -not $global:TunnelPaused) {
-            Write-Host "-> Переподключение туннеля WARP для применения правил..." -ForegroundColor Yellow
+            Write-Step (T 'ru.reconnect')
             Restart-WarpConnection
         }
         $global:CachedWarpStatus = $null
-        Write-Host "✅ Правила «Россия напрямую» применены." -ForegroundColor Green
+        Write-Ok (T 'ru.done')
     } else {
-        Write-Host "✅ Правила уже применены, добавлять нечего." -ForegroundColor Green
+        Write-Ok (T 'ru.already')
     }
 }
 
@@ -879,76 +1491,67 @@ function Get-SplitTunnelEntries {
 
 function Show-SplitTunnelSettings {
     while ($true) {
-        $LocalVer = Get-LocalBypassVersion
-        $Entries  = Get-SplitTunnelEntries
+        $LocalVer  = Get-LocalBypassVersion
+        $Entries   = Get-SplitTunnelEntries
         $HostCount = @($Entries.Hosts).Count
         $IpCount   = @($Entries.Ips).Count
         
-        Clear-Host
-        Write-Header
-        Write-Host "               МАРШРУТИЗАЦИЯ: РОССИЯ НАПРЯМУЮ" -ForegroundColor Cyan
-        Write-Host "=========================================================" -ForegroundColor DarkGray
-        Write-Host " Российские сайты и IP-адреса идут напрямую, без WARP:" -ForegroundColor Gray
-        Write-Host " банки, Госуслуги и другие сервисы работают как обычно." -ForegroundColor Gray
-        Write-Host "=========================================================" -ForegroundColor DarkGray
-        Write-Host " Состояние : " -NoNewline -ForegroundColor White
+        Write-Screen (T 'route.title') @((T 'route.sub1'), (T 'route.sub2'))
         if ($HostCount + $IpCount -gt 0) {
-            Write-Host "ВКЛЮЧЕНО (сайтов: $HostCount, IP-диапазонов: $IpCount)" -ForegroundColor Green
+            Write-Row (T 'route.state') (T 'route.state.on' $HostCount $IpCount) "Green"
         } else {
-            Write-Host "ВЫКЛЮЧЕНО" -ForegroundColor Red
+            Write-Row (T 'route.state') (T 'off') "DarkGray"
         }
-        Write-Host " Список    : " -NoNewline -ForegroundColor White
-        if ($LocalVer) { Write-Host "версия $LocalVer" -ForegroundColor Gray } else { Write-Host "не загружен" -ForegroundColor DarkGray }
-        Write-Host "=========================================================" -ForegroundColor DarkGray
-        Write-Host " [1] Включить (применить правила)" -ForegroundColor Green
-        Write-Host " [2] Обновить список сайтов и IP" -ForegroundColor Yellow
-        Write-Host " [3] Показать действующие правила" -ForegroundColor White
-        Write-Host " [4] Выключить (удалить все правила)" -ForegroundColor Red
-        Write-Host " [0] Назад" -ForegroundColor Gray
-        Write-Host "=========================================================" -ForegroundColor DarkGray
+        if ($LocalVer) { Write-Row (T 'route.list') (T 'route.list.ver' $LocalVer) "Gray" } else { Write-Row (T 'route.list') (T 'route.list.none') "DarkGray" }
+        Write-Rule
+        Write-Item "1" (T 'route.i1') "Green"
+        Write-Item "2" (T 'route.i2') "Yellow"
+        Write-Item "3" (T 'route.i3') "White"
+        Write-Item "4" (T 'route.i4') "Red"
+        Write-Item "0" (T 'back') "Gray"
+        Write-Rule
         
-        $sel = Read-Host "Выберите вариант"
-        switch ($sel.Trim()) {
+        switch (Read-Choice) {
             "1" {
+                Write-Host ""
                 Apply-RuBypassTemplate
-                Read-Host "Нажмите Enter для возврата..." | Out-Null
+                Write-Host ""
+                Wait-Enter
             }
             "2" {
                 Write-Host ""
                 Update-BypassLists -Force | Out-Null
-                Read-Host "Нажмите Enter для возврата..." | Out-Null
+                Write-Host ""
+                Wait-Enter
             }
             "3" {
-                Clear-Host
-                Write-Header
-                Write-Host "                 ДЕЙСТВУЮЩИЕ ПРАВИЛА" -ForegroundColor Cyan
-                Write-Host "=========================================================" -ForegroundColor DarkGray
-                Write-Host "--- Сайты: $HostCount ---" -ForegroundColor Yellow
+                Write-Screen (T 'route.rules.title')
+                Write-Host (" " + (T 'route.sites' $HostCount)) -ForegroundColor Yellow
                 if ($HostCount -gt 0) {
-                    $Entries.Hosts | Select-Object -First 15 | ForEach-Object { Write-Host "  $_" -ForegroundColor Green }
-                    if ($HostCount -gt 15) { Write-Host "  ... и ещё $($HostCount - 15)" -ForegroundColor DarkGray }
+                    $Entries.Hosts | Select-Object -First 15 | ForEach-Object { Write-Host ("   " + $_) -ForegroundColor Green }
+                    if ($HostCount -gt 15) { Write-Host ("   " + (T 'route.more' ($HostCount - 15))) -ForegroundColor DarkGray }
                 } else {
-                    Write-Host "  (нет)" -ForegroundColor DarkGray
+                    Write-Host ("   " + (T 'none')) -ForegroundColor DarkGray
                 }
-                Write-Host "`n--- IP-диапазоны: $IpCount ---" -ForegroundColor Yellow
+                Write-Host ""
+                Write-Host (" " + (T 'route.ips' $IpCount)) -ForegroundColor Yellow
                 if ($IpCount -gt 0) {
-                    $Entries.Ips | Select-Object -First 15 | ForEach-Object { Write-Host "  $_" -ForegroundColor Cyan }
-                    if ($IpCount -gt 15) { Write-Host "  ... и ещё $($IpCount - 15)" -ForegroundColor DarkGray }
+                    $Entries.Ips | Select-Object -First 15 | ForEach-Object { Write-Host ("   " + $_) -ForegroundColor Cyan }
+                    if ($IpCount -gt 15) { Write-Host ("   " + (T 'route.more' ($IpCount - 15))) -ForegroundColor DarkGray }
                 } else {
-                    Write-Host "  (нет)" -ForegroundColor DarkGray
+                    Write-Host ("   " + (T 'none')) -ForegroundColor DarkGray
                 }
-                Write-Host "=========================================================" -ForegroundColor DarkGray
-                Read-Host "Нажмите Enter для возврата..." | Out-Null
+                Write-Rule
+                Wait-Enter
             }
             "4" {
-                $Confirm = Read-Host "Удалить все правила и пускать весь трафик через WARP? (Y/N)"
-                if ($Confirm -match "^[YyДд]") {
-                    Write-Host "-> Удаление правил..." -ForegroundColor Yellow
+                if (Read-Confirm (T 'route.confirm.off')) {
+                    Write-Step (T 'route.removing')
                     & $WarpCli --accept-tos tunnel host reset | Out-Null
                     & $WarpCli --accept-tos tunnel ip reset | Out-Null
-                    Write-Host "Правила удалены." -ForegroundColor Green
+                    Write-Ok (T 'route.removed')
                     if ((Get-CachedWarpStatus) -eq "Connected") {
-                        Write-Host "-> Переподключение туннеля WARP..." -ForegroundColor Yellow
+                        Write-Step (T 'ru.reconnect')
                         Restart-WarpConnection
                     }
                     Start-Sleep -Seconds 2
@@ -981,18 +1584,11 @@ function Test-TlsHandshake ($Server, $TimeoutMs = 2500) {
 }
 
 function Start-Benchmark {
-    Clear-Host
-    Write-Header
-    Write-Host "         АВТО-ПОДБОР СТРАТЕГИИ МАСКИРОВКИ" -ForegroundColor Cyan
-    Write-Host "=========================================================" -ForegroundColor DarkGray
-    Write-Host " Утилита автоматически переберет разные профили работы Zapret и измерит связь с популярными сайтами." -ForegroundColor Gray
-    Write-Host " Мы определим, какой профиль работает быстрее и стабильнее всего в вашей сети." -ForegroundColor Gray
-    Write-Host " Ожидайте, это займет около минуты..." -ForegroundColor Gray
-    Write-Host "=========================================================" -ForegroundColor DarkGray
+    Write-Screen (T 'bench.title') @((T 'bench.sub1'), (T 'bench.sub2'), (T 'bench.sub3'))
     
     $ZapretDirFullName = if (Test-Path $ZapretDir) { (Get-Item $ZapretDir).FullName } else { "" }
     if (-not $ZapretDirFullName) {
-        Write-Host "❌ Ошибка: Папка компонентов zapret не найдена." -ForegroundColor Red
+        Write-Fail (T 'bench.nodir')
         Wait-Enter; return
     }
     
@@ -1001,7 +1597,7 @@ function Start-Benchmark {
     # Exclude service.bat, service_install.bat, and service_remove.bat
     $BatFiles = Get-ChildItem -Path $ZapretDirFullName -Filter "*.bat" | Where-Object { $_.Name -notmatch "(?i)service(_install|_remove)?\.bat$" }
     if ($BatFiles.Count -eq 0) {
-        Write-Host "❌ Ошибка: Файлы пресетов не найдены." -ForegroundColor Red
+        Write-Fail (T 'bench.nofiles')
         Wait-Enter; return
     }
     
@@ -1015,8 +1611,8 @@ function Start-Benchmark {
     $TestTargets = @("www.youtube.com", "discord.com", "gateway.discord.gg", "i.ytimg.com")
     $Results = @()
     foreach ($File in $BatFiles) {
-        $FileName = $File.Name
-        Write-Host " -> Тестирование [$FileName]... " -NoNewline -ForegroundColor Gray
+        $FileName = $File.BaseName
+        Write-Host (" -> " + (T 'bench.testing' $FileName) + " ") -NoNewline -ForegroundColor Gray
         
         $ArgsStr = Get-ZapretArgs $File.FullName
         $ZapretJob = $null
@@ -1045,99 +1641,87 @@ function Start-Benchmark {
         
         if ($SuccessCount -gt 0) {
             $AvgPing = [math]::Round(($Pings | Measure-Object -Average).Average)
-            Write-Host "ДОСТУПЕН ($SuccessCount/$($TestTargets.Count) узлов, $AvgPing ms)" -ForegroundColor Green
+            Write-Host (T 'bench.ok' $SuccessCount $TestTargets.Count $AvgPing) -ForegroundColor Green
             $Results += [PSCustomObject]@{ Preset = $File.FullName; Name = $FileName; Status = "OK"; SuccessRate = $SuccessCount; Ping = $AvgPing }
         } else {
-            Write-Host "НЕ РАБОТАЕТ" -ForegroundColor Red
+            Write-Host (T 'bench.fail') -ForegroundColor Red
             $Results += [PSCustomObject]@{ Preset = $File.FullName; Name = $FileName; Status = "Fail"; SuccessRate = 0; Ping = 9999 }
         }
     }
     
-    Write-Host "=========================================================" -ForegroundColor DarkGray
-    Write-Host "                 РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ" -ForegroundColor Cyan
-    Write-Host "=========================================================" -ForegroundColor DarkGray
+    Write-Rule
+    Write-Center (T 'bench.results')
+    Write-Rule
     
     $Best = $Results | Where-Object { $_.Status -eq "OK" } | Sort-Object @{Expression="SuccessRate";Descending=$true}, @{Expression="Ping";Ascending=$true} | Select-Object -First 1
     if ($Best) {
-        Write-Host " -> Рекомендуемая стратегия: " -NoNewline
-        Write-Host "[$($Best.Name)]" -ForegroundColor Green -NoNewline
-        Write-Host " (обход: $($Best.SuccessRate)/$($TestTargets.Count) узлов, средний пинг: $($Best.Ping) ms)" -ForegroundColor White
+        Write-Host (" " + (T 'bench.best') + " ") -NoNewline
+        Write-Host $Best.Name -ForegroundColor Green -NoNewline
+        Write-Host ("  (" + (T 'bench.best.d' $Best.SuccessRate $TestTargets.Count $Best.Ping) + ")") -ForegroundColor White
         Write-Host ""
-        $SaveChoice = Read-Host " Применить выбранную стратегию как основную для автозапуска? (Y/N)"
-        if ($SaveChoice -match "^[YyДд]") {
+        if (Read-Confirm (T 'bench.save.ask')) {
             $Config.LastPreset = $Best.Preset
             $Config.AutoPreset = $true
             Save-Config
-            Write-Host " Настройки сохранены!" -ForegroundColor Green
+            Write-Ok (T 'bench.saved')
         }
     } else {
-        Write-Host "❌ Тестирование завершено: ни одна из стратегий не вернула успешный пинг." -ForegroundColor Red
+        Write-Fail (T 'bench.none')
     }
     if ($WasConnected -and $global:ActivePreset) {
-        Write-Host " -> Восстановление активного сеанса..." -ForegroundColor Yellow
+        Write-Step (T 'bench.restore')
         Connect-WarpTunnel $global:ActivePreset | Out-Null
         $global:CachedWarpStatus = $null
     }
-    Write-Host " Нажмите Enter для возврата..."
-    Read-Host | Out-Null
+    Write-Host ""
+    Wait-Enter
 }
-
 
 function Show-PingSettings {
     while ($true) {
-        Clear-Host
-        Write-Header
-        Write-Host "                 НАСТРОЙКИ ДИАГНОСТИКИ И ПИНГА" -ForegroundColor Cyan
-        Write-Host "=========================================================" -ForegroundColor DarkGray
-        Write-Host " [1] Диагностика задержки (Ping)   : " -NoNewline
-        if ($Config.AutoPing -eq 1) { Write-Host "СТАТИЧЕСКАЯ" -ForegroundColor Green }
-        elseif ($Config.AutoPing -eq 2) { Write-Host "ДИНАМИЧЕСКАЯ ($($Config.PingInterval) сек)" -ForegroundColor Cyan }
-        else { Write-Host "ОТКЛЮЧЕНО" -ForegroundColor Red }
+        Write-Screen (T 'ping.title') @((T 'ping.sub'))
+        if ($Config.AutoPing -eq 1) { Write-Row (T 'ping.mode') (T 'ping.mode.static') "Green" }
+        elseif ($Config.AutoPing -eq 2) { Write-Row (T 'ping.mode') (T 'ping.mode.dynamic' $Config.PingInterval) "Cyan" }
+        else { Write-Row (T 'ping.mode') (T 'off') "DarkGray" }
+        Write-Rule
+        Write-Item "1" (T 'ping.i1') "White"
+        Write-Item "2" (T 'ping.i2') "White"
+        Write-Item "3" (T 'ping.i3') "White"
+        Write-Item "4" (T 'ping.i4') "Red"
+        Write-Item "0" (T 'back') "Gray"
+        Write-Rule
         
-        Write-Host " [2] Изменить интервал динамического пинга" -ForegroundColor White
-        Write-Host " [3] Редактировать список хостов для проверки" -ForegroundColor White
-        Write-Host "=========================================================" -ForegroundColor DarkGray
-        Write-Host " [D] Сбросить настройки пинга по умолчанию" -ForegroundColor Red
-        Write-Host " [0] Назад" -ForegroundColor Gray
-        Write-Host "=========================================================" -ForegroundColor DarkGray
-        
-        $sel = Read-Host "Выберите вариант"
-        switch ($sel.Trim().ToLower()) {
+        switch (Read-Choice) {
             "1" {
                 $Config.AutoPing = ($Config.AutoPing + 1) % 3
                 Save-Config
             }
             "2" {
                 if ($Config.AutoPing -ne 2) {
-                    Write-Host "Интервал настраивается только для динамического режима пинга." -ForegroundColor Yellow
+                    Write-Fail (T 'ping.int.only')
                     Start-Sleep -Seconds 2
                     continue
                 }
-                Clear-Host
-                Write-Header
-                Write-Host "         ИНТЕРВАЛ ОБНОВЛЕНИЯ ДИНАМИЧЕСКОГО ПИНГА" -ForegroundColor Cyan
-                Write-Host "=========================================================" -ForegroundColor DarkGray
-                Write-Host " Укажите частоту обновления доступности узлов:" -ForegroundColor White
-                Write-Host "   1. 15 секунд"
-                Write-Host "   2. 30 секунд (Рекомендуется)"
-                Write-Host "   3. 60 секунд"
-                Write-Host "   4. 120 секунд"
-                Write-Host "   5. Указать вручную в секундах"
-                Write-Host ""
-                $IntChoice = Read-Host "Выберите вариант (1-5, по умолчанию: 2)"
-                switch ($IntChoice.Trim()) {
+                Write-Screen (T 'ping.int.title') @((T 'ping.int.sub'))
+                Write-Item "1" (T 'sec' 15) "White"
+                Write-Item "2" ((T 'sec' 30) + " (" + (T 'recommended') + ")") "White"
+                Write-Item "3" (T 'sec' 60) "White"
+                Write-Item "4" (T 'sec' 120) "White"
+                Write-Item "5" (T 'ping.int.custom') "White"
+                Write-Rule
+                switch (Read-Choice) {
                     "1" { $Config.PingInterval = 15 }
                     "2" { $Config.PingInterval = 30 }
                     "3" { $Config.PingInterval = 60 }
                     "4" { $Config.PingInterval = 120 }
-                    "5" { 
-                        $CustomVal = Read-Host "Введите время в секундах (минимум 5)"
+                    "5" {
+                        $CustomVal = Read-Host (" " + (T 'ping.int.ask'))
                         $ParsedVal = 30
                         if ([int]::TryParse($CustomVal, [ref]$ParsedVal) -and $ParsedVal -ge 5) {
                             $Config.PingInterval = $ParsedVal
                         } else {
                             $Config.PingInterval = 30
-                            Write-Host "Некорректное значение. Установлено 30 секунд." -ForegroundColor Yellow
+                            Write-Fail (T 'ping.int.bad')
                             Start-Sleep -Seconds 1
                         }
                     }
@@ -1148,13 +1732,12 @@ function Show-PingSettings {
             "3" {
                 Start-Process notepad.exe $PingListPath -Wait
             }
-            "d" {
-                $Confirm = Read-Host "Восстановить стандартные параметры проверки хостов? (Y/N)"
-                if ($Confirm.Trim().ToLower() -match "^[yд]") {
+            { $_ -eq "4" -or $_ -eq "d" } {
+                if (Read-Confirm (T 'ping.reset.ask')) {
                     $Config.AutoPing = $DefaultConfig.AutoPing
                     $Config.PingInterval = $DefaultConfig.PingInterval
                     Save-Config
-                    Write-Host "Настройки пинга сброшены!" -ForegroundColor Green
+                    Write-Ok (T 'ping.reset.done')
                     Start-Sleep -Seconds 1
                 }
             }
@@ -1164,19 +1747,14 @@ function Show-PingSettings {
 }
 
 function Uninstall-WarpBypass {
-    Clear-Host
-    Write-Header
-    Write-Host "              УДАЛЕНИЕ УТИЛИТЫ WARPBYPASS ИЗ СИСТЕМЫ" -ForegroundColor Red
-    Write-Host "=========================================================" -ForegroundColor DarkGray
+    Write-Screen (T 'un.title') @() "Red"
     
-    Write-Host "-> Завершение фоновых модулей маскировки трафика..." -ForegroundColor Yellow
+    Write-Step (T 'un.stop')
     try { Stop-Winws } catch {}
     try { Stop-WinDivert } catch {}
     Start-Sleep -Seconds 1
     
-
-    
-    Write-Host "-> Восстановление настроек Cloudflare WARP..." -ForegroundColor Yellow
+    Write-Step (T 'un.restore')
     if (Test-Path $WarpCli) {
         & $WarpCli --accept-tos disconnect *> $null
         & $WarpCli --accept-tos mode warp *> $null
@@ -1187,7 +1765,7 @@ function Uninstall-WarpBypass {
         Set-Service -Name "CloudflareWARP" -StartupType Automatic -ErrorAction SilentlyContinue | Out-Null
     } catch {}
     
-    Write-Host "-> Очистка реестра Windows..." -ForegroundColor Yellow
+    Write-Step (T 'un.registry')
     try {
         foreach ($Hive in @("HKLM", "HKCU")) {
             $RegPath = "$Hive`:\Software\Microsoft\Windows\CurrentVersion\Run"
@@ -1199,7 +1777,7 @@ function Uninstall-WarpBypass {
         }
     } catch {}
     
-    Write-Host "-> Удаление файлов в AppData..." -ForegroundColor Yellow
+    Write-Step (T 'un.files')
     $MyPID = $PID
     $CmdArgs = @(
         '-NoProfile'
@@ -1210,102 +1788,223 @@ function Uninstall-WarpBypass {
     )
     Start-Process powershell -ArgumentList $CmdArgs -WindowStyle Hidden
     
-    Write-Host "=========================================================" -ForegroundColor DarkGray
-    Write-Host " Программа успешно удалена." -ForegroundColor Green
-    Write-Host " Службы и конфигурационные папки очищены." -ForegroundColor Gray
-    Write-Host " Спасибо за использование WarpBypass!" -ForegroundColor Gray
-    Write-Host "=========================================================" -ForegroundColor DarkGray
+    Write-Rule
+    Write-Ok (T 'un.done')
+    Write-Note (T 'un.done2')
+    Write-Note (T 'un.done3')
+    Write-Rule
     Start-Sleep -Seconds 4
     exit
 }
 
-function Show-CommonSettings {
+function Show-ConnectionSettings {
     while ($true) {
-        Clear-Host
-        Write-Header
-        Write-Host "             ОБЩИЕ ПАРАМЕТРЫ СИСТЕМЫ WarpBypass" -ForegroundColor Cyan
-        Write-Host "=========================================================" -ForegroundColor DarkGray
-        Write-Host " [1] Автоматический запуск профиля : " -NoNewline; if ($Config.AutoPreset) { Write-Host "АКТИВНО" -ForegroundColor Green } else { Write-Host "ОТКЛЮЧЕНО" -ForegroundColor Red }
-        Write-Host " [2] Принудительный сброс DNS-кэша : " -NoNewline; if ($Config.DnsFix) { Write-Host "АКТИВНО" -ForegroundColor Green } else { Write-Host "ОТКЛЮЧЕНО" -ForegroundColor Red }
-        Write-Host " [3] Авто-синхронизация обновлений : " -NoNewline; if ($Config.AutoUpdate) { Write-Host "АКТИВНО" -ForegroundColor Green } else { Write-Host "ОТКЛЮЧЕНО" -ForegroundColor Red }
-        Write-Host " [4] Задержка автозапуска профиля  : " -NoNewline; if ($Config.AutoPresetTimeout -eq 0) { Write-Host "0 сек (Мгновенный старт)" -ForegroundColor Cyan } else { Write-Host "$($Config.AutoPresetTimeout) сек" -ForegroundColor Green }
-        Write-Host " [5] Лицензионный ключ WARP+       : " -NoNewline; if ($Config.WarpLicense) { Write-Host "ЗАДАН" -ForegroundColor Green } else { Write-Host "НЕ ЗАДАН" -ForegroundColor Red }
-        Write-Host "=========================================================" -ForegroundColor DarkGray
-        Write-Host " [U] Стереть утилиту WarpBypass из системы" -ForegroundColor Red
-        Write-Host " [D] Восстановить настройки по умолчанию" -ForegroundColor Red
-        Write-Host " [0] Назад" -ForegroundColor Gray
-        Write-Host "=========================================================" -ForegroundColor DarkGray
+        Write-Screen (T 'conn.title') @((T 'conn.sub'))
+        $ProfileName = if ($Config.LastPreset) { [IO.Path]::GetFileNameWithoutExtension($Config.LastPreset) } else { T 'conn.profile.none' }
+        Write-Row (T 'conn.profile') $ProfileName "Cyan"
+        Write-OnOff (T 'conn.auto') ([bool]$Config.AutoPreset)
+        if ($Config.AutoPresetTimeout -eq 0) { Write-Row (T 'conn.delay') (T 'conn.delay.instant') "Cyan" } else { Write-Row (T 'conn.delay') (T 'sec' $Config.AutoPresetTimeout) "Green" }
+        Write-OnOff (T 'conn.dns') ([bool]$Config.DnsFix)
+        Write-Rule
+        Write-Item "1" (T 'conn.i1') "White"
+        Write-Item "2" (T 'conn.i2') "White"
+        Write-Item "3" (T 'conn.i3') "White"
+        Write-Item "0" (T 'back') "Gray"
+        Write-Rule
         
-        $sel = Read-Host "Выберите вариант"
-        switch ($sel.Trim().ToLower()) {
+        switch (Read-Choice) {
             "1" { $Config.AutoPreset = -not $Config.AutoPreset; Save-Config }
-            "2" { $Config.DnsFix = -not $Config.DnsFix; Save-Config }
-            "3" { $Config.AutoUpdate = -not $Config.AutoUpdate; Save-Config }
-            "4" {
-                $Val = Read-Host "Введите задержку автозапуска в секундах (0 - запуск без ожидания)"
+            "2" {
+                $Val = Read-Host (" " + (T 'conn.delay.ask'))
                 $ParsedVal = 0
                 if ([int]::TryParse($Val, [ref]$ParsedVal) -and $ParsedVal -ge 0) {
                     $Config.AutoPresetTimeout = $ParsedVal
                     Save-Config
-                    Write-Host "Задержка автозапуска установлена в $ParsedVal сек." -ForegroundColor Green
-                    Start-Sleep -Seconds 1
                 } else {
-                    Write-Host "Некорректное значение задержки." -ForegroundColor Red
+                    Write-Fail (T 'conn.delay.bad')
                     Start-Sleep -Seconds 1
                 }
             }
-            "5" {
-                $Sec = Read-Host "Ключ WARP+ (xxxxxxxx-xxxxxxxx-xxxxxxxx, пусто - удалить)" -AsSecureString
-                $Bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($Sec)
-                try { $Key = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($Bstr).Trim() } finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($Bstr) }
+            "3" { $Config.DnsFix = -not $Config.DnsFix; Save-Config }
+            "0" { return }
+        }
+    }
+}
+
+function Show-SystemSettings {
+    while ($true) {
+        Write-Screen (T 'sys.title') @((T 'sys.sub'))
+        Write-Row (T 'sys.lang') $(if ($global:Lang -eq "en") { "English" } else { "Русский" }) "Cyan"
+        if ($Config.WarpLicense) { Write-Row (T 'sys.key') (T 'sys.key.set') "Green" } else { Write-Row (T 'sys.key') (T 'sys.key.unset') "DarkGray" }
+        Write-OnOff (T 'sys.upd') ([bool]$Config.AutoUpdate)
+        Write-Row (T 'sys.ver') ("v" + $AppVersion) "Gray"
+        Write-Rule
+        Write-Item "1" (T 'sys.i1') "White"
+        Write-Item "2" (T 'sys.i2') "White"
+        Write-Item "3" (T 'sys.i3') "White"
+        Write-Item "4" (T 'sys.i4') "Yellow"
+        Write-Item "5" (T 'sys.i5') "Red"
+        Write-Item "0" (T 'back') "Gray"
+        Write-Rule
+        
+        switch (Read-Choice) {
+            "1" {
+                Write-Item "1" "English" "White"
+                Write-Item "2" "Русский" "White"
+                Write-Rule
+                $L = Read-Choice
+                if ($L -eq "1") { $Config.Language = "en" } elseif ($L -eq "2") { $Config.Language = "ru" }
+                Initialize-Language $Config.Language
+                Save-Config
+            }
+            "2" {
+                Write-Screen (T 'key.title') @((T 'key.sub1'), (T 'key.sub2'))
+                $Key = Read-LicenseKey
                 if ($Key -eq "") {
                     $Config.WarpLicense = ""
                     Save-Config
-                    Write-Host "Ключ удалён из настроек. Уже применённый ключ действует до перерегистрации." -ForegroundColor Yellow
+                    Write-Ok (T 'key.removed')
                 } elseif ($Key -notmatch "^[A-Za-z0-9]{8}-[A-Za-z0-9]{8}-[A-Za-z0-9]{8}$") {
-                    Write-Host "Некорректный формат ключа." -ForegroundColor Red
+                    Write-Fail (T 'key.badformat')
                 } else {
                     $Config.WarpLicense = $Key
                     Save-Config
                     if (Set-WarpLicense $Key) {
-                        Write-Host "Ключ принят клиентом WARP." -ForegroundColor Green
+                        Write-Ok (T 'key.accepted')
                         if ((Get-WarpStatus) -eq "Connected" -and -not $global:TunnelPaused) {
-                            Write-Host "-> Переподключение для проверки ключа..." -ForegroundColor Yellow
+                            Write-Step (T 'key.checking')
                             Restart-WarpConnection
                             Wait-ExternalIp 15
                             if ($global:CurrentExternalIp -match "WARP\+") {
-                                Write-Host "WARP+ активен." -ForegroundColor Green
+                                Write-Ok (T 'key.plus.on')
                             } else {
-                                Write-Host "Ключ принят, но WARP+ не активен (аккаунт Free): ключ недействителен или исчерпан лимит устройств." -ForegroundColor Yellow
+                                Write-Fail (T 'key.plus.off')
                             }
                         } else {
-                            Write-Host "Проверить ключ можно после подключения: в строке IP-адреса появится [WARP+]." -ForegroundColor Gray
+                            Write-Note (T 'key.later') "Gray"
                         }
                     } else {
-                        Write-Host "Клиент WARP не принял ключ (неверный, уже использован или исчерпан лимит устройств)." -ForegroundColor Red
-                        Write-Host "Ключ сохранён и будет повторно применён при следующей регистрации." -ForegroundColor Gray
+                        Write-Fail (T 'key.rejected')
+                        Write-Note (T 'key.kept') "Gray"
                     }
                 }
                 Start-Sleep -Seconds 4
             }
-            "u" {
-                $Confirm = Read-Host "ВНИМАНИЕ: Все файлы конфигурации и зависимости программы будут безвозвратно удалены. Продолжить? (Y/N)"
-                if ($Confirm.Trim().ToLower() -match "^[yд]") {
-                    Uninstall-WarpBypass
-                }
-            }
-            "d" {
-                $Confirm = Read-Host "Восстановить настройки по умолчанию? (Y/N)"
-                if ($Confirm.Trim().ToLower() -match "^[yд]") {
-                    $Config.AutoPreset = $DefaultConfig.AutoPreset
-                    $Config.DnsFix = $DefaultConfig.DnsFix
-                    $Config.AutoUpdate = $DefaultConfig.AutoUpdate
-                    $Config.AutoPresetTimeout = $DefaultConfig.AutoPresetTimeout
+            "3" { $Config.AutoUpdate = -not $Config.AutoUpdate; Save-Config }
+            "4" {
+                if (Read-Confirm (T 'sys.reset.ask')) {
+                    foreach ($Key in $DefaultConfig.Keys) {
+                        if ($Key -ne "WarpLicense" -and $Key -ne "Language") { $Config.$Key = $DefaultConfig[$Key] }
+                    }
                     Save-Config
-                    Write-Host "Общие параметры сброшены!" -ForegroundColor Green
-                    Start-Sleep -Seconds 1
+                    if (Test-Path $WarpCli) {
+                        & $WarpCli --accept-tos mode warp | Out-Null
+                    }
+                    Write-Ok (T 'sys.reset.done')
+                    Start-Sleep -Seconds 2
                 }
             }
+            "5" {
+                if (Read-Confirm (T 'sys.uninstall.ask')) { Uninstall-WarpBypass }
+            }
+            "0" { return }
+        }
+    }
+}
+
+function Show-WarpStats {
+    if (-not (Test-Path $WarpCli)) {
+        Write-Fail (T 'stat.nowarp')
+        Start-Sleep -Seconds 2
+        return
+    }
+    $Na = T 'na'
+    $Mtu = $Na; $Speed = $Na; $Dns = $Na; $Api = $Na; $Fw = $Na; $Loss = "0.00%"
+    
+    while ($true) {
+        Write-Screen (T 'stat.title') @((T 'stat.sub'))
+        
+        $ProcessInfo = New-Object System.Diagnostics.ProcessStartInfo
+        $ProcessInfo.FileName = $WarpCli
+        $ProcessInfo.Arguments = "--accept-tos stats"
+        $ProcessInfo.RedirectStandardOutput = $true
+        $ProcessInfo.RedirectStandardError = $true
+        $ProcessInfo.UseShellExecute = $false
+        $ProcessInfo.CreateNoWindow = $true
+        
+        $Process = New-Object System.Diagnostics.Process
+        $Process.StartInfo = $ProcessInfo
+        
+        $StatsOutput = ""
+        try {
+            $Process.Start() | Out-Null
+            $OutTask = $Process.StandardOutput.ReadToEndAsync()
+            $ErrTask = $Process.StandardError.ReadToEndAsync()
+            if (-not $Process.WaitForExit(3000)) { $Process.Kill() }
+            $null = $OutTask.Wait(1000)
+            if ($OutTask.IsCompleted) { $StatsOutput = $OutTask.Result }
+        } catch {
+            $StatsOutput = ""
+        }
+        
+        if ($StatsOutput.Trim() -ne "") {
+            $Lines = $StatsOutput -split "`r?`n"
+            foreach ($Line in $Lines) {
+                if ($Line -match "tunnel_mtu_current\s*\(value\s*=\s*([\d.]+)\)") {
+                    $Mtu = [string][math]::Round([double]$Matches[1])
+                }
+                elseif ($Line -match "quic_utilized_bandwidth\s*\(value\s*=\s*([\d.]+)\)") {
+                    $Bits = [double]$Matches[1]
+                    if ($Bits -ge 1e6) {
+                        $Speed = (T 'stat.speed.fmt' ([math]::Round($Bits / 1e6, 1)) ([math]::Round($Bits / 8e6, 1)))
+                    } else {
+                        $Speed = (T 'stat.speed.low' ([math]::Round($Bits / 1e3, 1)))
+                    }
+                }
+                elseif ($Line -match "doh_avg_ms\s*\(.*avg\s*=\s*([\d.]+)\)") {
+                    $Dns = (T 'ms.fmt' ([math]::Round([double]$Matches[1], 1)))
+                }
+                elseif ($Line -match "api_req_avg_ms\s*\(.*avg\s*=\s*([\d.]+)\)") {
+                    $Api = (T 'ms.fmt' ([math]::Round([double]$Matches[1], 1)))
+                }
+                elseif ($Line -match "fw_avg_ms\s*\(.*avg\s*=\s*([\d.]+)\)") {
+                    $Fw = (T 'ms.fmt' ([math]::Round([double]$Matches[1], 1)))
+                }
+                elseif ($Line -match "Loss rate:\s*(.+)") {
+                    $Loss = $Matches[1].Trim()
+                }
+            }
+        }
+        
+        Write-Row (T 'stat.mtu') $Mtu "Green"
+        Write-Row (T 'stat.speed') $Speed "Cyan"
+        $LossColor = if ($Loss -match "^0") { "Green" } else { "Red" }
+        Write-Row (T 'stat.loss') $Loss $LossColor
+        Write-Row (T 'stat.dns') $Dns "Green"
+        Write-Row (T 'stat.api') $Api "Green"
+        Write-Row (T 'stat.fw') $Fw "Gray"
+        Write-Rule
+        Write-Item "R" (T 'stat.refresh') "Green"
+        Write-Item "0" (T 'back') "Gray"
+        Write-Rule
+        
+        if ((Read-Choice) -ne "r") { return }
+    }
+}
+
+function Show-DiagnosticsSettings {
+    while ($true) {
+        Write-Screen (T 'diag.title') @((T 'diag.sub'))
+        Write-Item "1" (T 'diag.i1') "White" (T 'diag.i1.d')
+        Write-Item "2" (T 'diag.i2') "White" (T 'diag.i2.d')
+        Write-Item "3" (T 'diag.i3') "Yellow" (T 'diag.i3.d')
+        Write-Item "0" (T 'back') "Gray"
+        Write-Rule
+        
+        switch (Read-Choice) {
+            "1" { Show-PingSettings }
+            "2" { Show-WarpStats }
+            "3" { Start-Benchmark }
             "0" { return }
         }
     }
@@ -1313,143 +2012,19 @@ function Show-CommonSettings {
 
 function Show-Settings {
     while ($true) {
-        Clear-Host
-        Write-Header
-        Write-Host "                 КОНФИГУРАЦИЯ" -ForegroundColor Cyan
-        Write-Host "=========================================================" -ForegroundColor DarkGray
-        Write-Host " [1] Статистика и метрики WARP" -ForegroundColor White
-        Write-Host " [2] Настройки диагностики и пинга" -ForegroundColor White
-        Write-Host " [3] Управление Split Tunneling (Маршрутизация)" -ForegroundColor White
-        Write-Host " [4] Общие настройки" -ForegroundColor White
-        Write-Host " [B] Авто-подбор стратегии маскировки" -ForegroundColor Yellow
-        Write-Host "=========================================================" -ForegroundColor DarkGray
-        Write-Host " [D] Сброс всех настроек по умолчанию" -ForegroundColor Red
-        Write-Host " [0] Вернуться в главное меню" -ForegroundColor Gray
-        Write-Host "=========================================================" -ForegroundColor DarkGray
+        Write-Screen (T 'set.title') @((T 'set.sub'))
+        Write-Item "1" (T 'set.i1') "White" (T 'set.i1.d')
+        Write-Item "2" (T 'set.i2') "White" (T 'set.i2.d')
+        Write-Item "3" (T 'set.i3') "White" (T 'set.i3.d')
+        Write-Item "4" (T 'set.i4') "White" (T 'set.i4.d')
+        Write-Item "0" (T 'back') "Gray"
+        Write-Rule
         
-        $sel = Read-Host "Выберите раздел"
-        switch ($sel.Trim().ToLower()) {
-            "1" {
-                if (Test-Path $WarpCli) {
-                    $Mtu = "Не определено"
-                    $Speed = "0 KB/s"
-                    $Dns = "Не определено"
-                    $Api = "Не определено"
-                    $Fw = "Не определено"
-                    $Loss = "0.00%"
-                    
-                    while ($true) {
-                        Clear-Host
-                        Write-Header
-                        Write-Host "                    СТАТИСТИКА WARP" -ForegroundColor Cyan
-                        Write-Host "=========================================================" -ForegroundColor DarkGray
-                        
-                        $ProcessInfo = New-Object System.Diagnostics.ProcessStartInfo
-                        $ProcessInfo.FileName = $WarpCli
-                        $ProcessInfo.Arguments = "--accept-tos stats"
-                        $ProcessInfo.RedirectStandardOutput = $true
-                        $ProcessInfo.RedirectStandardError = $true
-                        $ProcessInfo.UseShellExecute = $false
-                        $ProcessInfo.CreateNoWindow = $true
-                        
-                        $Process = New-Object System.Diagnostics.Process
-                        $Process.StartInfo = $ProcessInfo
-                        
-                        $StatsOutput = ""
-                        try {
-                            $Process.Start() | Out-Null
-                            $OutTask = $Process.StandardOutput.ReadToEndAsync()
-                            $ErrTask = $Process.StandardError.ReadToEndAsync()
-                            if (-not $Process.WaitForExit(3000)) { $Process.Kill() }
-                            $null = $OutTask.Wait(1000)
-                            if ($OutTask.IsCompleted) { $StatsOutput = $OutTask.Result }
-                        } catch {
-                            $StatsOutput = ""
-                        }
-                        
-                        if ($StatsOutput.Trim() -ne "") {
-                            $Lines = $StatsOutput -split "`r?`n"
-                            foreach ($Line in $Lines) {
-                                if ($Line -match "tunnel_mtu_current\s*\(value\s*=\s*([\d.]+)\)") {
-                                    $Mtu = [math]::Round([double]$Matches[1])
-                                }
-                                elseif ($Line -match "quic_utilized_bandwidth\s*\(value\s*=\s*([\d.]+)\)") {
-                                    $Bits = [double]$Matches[1]
-                                    if ($Bits -ge 1e6) {
-                                        $Speed = "$([math]::Round($Bits / 1e6, 1)) Мбит/с ($([math]::Round($Bits / 8e6, 1)) МБ/с)"
-                                    } else {
-                                        $Speed = "$([math]::Round($Bits / 1e3, 1)) Кбит/с"
-                                    }
-                                }
-                                elseif ($Line -match "doh_avg_ms\s*\(.*avg\s*=\s*([\d.]+)\)") {
-                                    $Dns = "$([math]::Round([double]$Matches[1], 1)) ms"
-                                }
-                                elseif ($Line -match "api_req_avg_ms\s*\(.*avg\s*=\s*([\d.]+)\)") {
-                                    $Api = "$([math]::Round([double]$Matches[1], 1)) ms"
-                                }
-                                elseif ($Line -match "fw_avg_ms\s*\(.*avg\s*=\s*([\d.]+)\)") {
-                                    $Fw = "$([math]::Round([double]$Matches[1], 1)) ms"
-                                }
-                                elseif ($Line -match "Loss rate:\s*(.+)") {
-                                    $Loss = $Matches[1].Trim()
-                                }
-                            }
-                        }
-                        
-                        Write-Host "  Текущий MTU туннеля         : " -NoNewline -ForegroundColor White
-                        Write-Host $Mtu -ForegroundColor Green
-                        
-                        Write-Host "  Текущая скорость (QUIC)     : " -NoNewline -ForegroundColor White
-                        Write-Host $Speed -ForegroundColor Cyan
-                        
-                        Write-Host "  Потери пакетов (Loss rate)  : " -NoNewline -ForegroundColor White
-                        $LossColor = if ($Loss -match "^0") { "Green" } else { "Red" }
-                        Write-Host $Loss -ForegroundColor $LossColor
-                        
-                        Write-Host "  Средняя задержка DNS (DoH)  : " -NoNewline -ForegroundColor White
-                        Write-Host $Dns -ForegroundColor Green
-                        
-                        Write-Host "  Задержка API Cloudflare     : " -NoNewline -ForegroundColor White
-                        Write-Host $Api -ForegroundColor Green
-                        
-                        Write-Host "  Внутренняя задержка фильтра : " -NoNewline -ForegroundColor White
-                        Write-Host $Fw -ForegroundColor Gray
-                        
-                        Write-Host "=========================================================" -ForegroundColor DarkGray
-                        Write-Host " [R] Обновить показатели статистики" -ForegroundColor Green
-                        Write-Host " [0] Вернуться в настройки" -ForegroundColor Gray
-                        Write-Host "=========================================================" -ForegroundColor DarkGray
-                        
-                        $Opt = Read-Host "Выберите действие"
-                        if ($Opt.Trim().ToLower() -eq "r") {
-                            continue
-                        } else {
-                            break
-                        }
-                    }
-                } else {
-                    Write-Host "Клиент Cloudflare WARP не установлен." -ForegroundColor Red
-                    Start-Sleep -Seconds 2
-                }
-            }
-            "2" { Show-PingSettings }
-            "3" { Show-SplitTunnelSettings }
-            "4" { Show-CommonSettings }
-            "b" { Start-Benchmark }
-            "d" {
-                $Confirm = Read-Host "ВНИМАНИЕ: Сбросить абсолютно ВСЕ настройки к заводским? (Y/N)"
-                if ($Confirm.Trim().ToLower() -match "^[yд]") {
-                    foreach ($Key in $DefaultConfig.Keys) {
-                        if ($Key -ne "WarpLicense") { $Config.$Key = $DefaultConfig[$Key] }
-                    }
-                    Save-Config
-                    if (Test-Path $WarpCli) {
-                        & $WarpCli --accept-tos mode warp | Out-Null
-                    }
-                    Write-Host "Все настройки программы восстановлены по умолчанию!" -ForegroundColor Green
-                    Start-Sleep -Seconds 2
-                }
-            }
+        switch (Read-Choice) {
+            "1" { Show-ConnectionSettings }
+            "2" { Show-SplitTunnelSettings }
+            "3" { Show-DiagnosticsSettings }
+            "4" { Show-SystemSettings }
             "0" { return }
         }
     }
@@ -1522,7 +2097,7 @@ function Measure-Latency {
 
 function Start-Winws ($BatFile) {
     try { Stop-Winws } catch {}
-    Write-Host "-> Запуск сетевого фильтра winws (в фоновом режиме)..." -ForegroundColor Yellow
+    Write-Step (T 'winws.start')
     $ArgsStr = Get-ZapretArgs $BatFile
     if ($null -ne $ArgsStr) {
         $Job = Start-Process -FilePath "$ZapretDir\bin\winws.exe" -ArgumentList $ArgsStr -WorkingDirectory "$ZapretDir\bin" -WindowStyle Hidden -PassThru
@@ -1536,7 +2111,7 @@ function Start-Winws ($BatFile) {
     }
     Start-Sleep -Seconds 1
     if (-not (Get-Process -Name "winws" -ErrorAction SilentlyContinue)) {
-        Write-Host "-> Предупреждение: процесс winws не запущен (конфликт WinDivert или антивирус)." -ForegroundColor Red
+        Write-Fail (T 'winws.fail')
     }
 }
 
@@ -1570,7 +2145,7 @@ function Connect-WarpTunnel ($BatFile) {
     try { Stop-Process -Name "goodbyedpi" -Force -ErrorAction SilentlyContinue *> $null } catch {}
 
     if ($Config.DnsFix) {
-        Write-Host "-> Сброс системного кэша адресов DNS..." -ForegroundColor Yellow
+        Write-Step (T 'conn.flushdns')
         ipconfig /flushdns | Out-Null
     }
     
@@ -1579,18 +2154,20 @@ function Connect-WarpTunnel ($BatFile) {
     if (-not (Test-Path $WarpCli)) {
         $WarpMsi = "$StorageDir\Cloudflare_WARP.msi"
         try {
-            Start-DownloadWithProgress -Uri "https://downloads.cloudflareclient.com/v1/download/windows/ga" -OutFile $WarpMsi -Label "Загрузка Cloudflare WARP"
-            Write-Host "-> Установка Cloudflare WARP..." -ForegroundColor Gray
+            Start-DownloadWithProgress -Uri "https://downloads.cloudflareclient.com/v1/download/windows/ga" -OutFile $WarpMsi -Label (T 'conn.dl.warp')
+            Write-Step (T 'conn.install.warp') "Gray"
             Start-Process msiexec.exe -ArgumentList "/i `"$WarpMsi`" /qn /norestart START_WPF_AS_USER=0" -Wait -NoNewWindow
             Remove-Item $WarpMsi -ErrorAction SilentlyContinue
             if (-not (Test-Path $WarpCli)) {
-                Write-Host "`n❌ Критическая ошибка: Установка завершена, но исполняемый файл warp-cli.exe не найден." -ForegroundColor Red
+                Write-Host ""
+                Write-Fail (T 'conn.warp.missing')
                 Wait-Enter; Exit
             }
-            Write-Host "-> Служба Cloudflare WARP успешно зарегистрирована в системе." -ForegroundColor Green
+            Write-Ok (T 'conn.warp.installed')
             Start-Sleep -Seconds 2
         } catch {
-            Write-Host "`n❌ Критическая ошибка: Сбой при загрузке или установке Cloudflare WARP." -ForegroundColor Red
+            Write-Host ""
+            Write-Fail (T 'conn.warp.failed')
             Wait-Enter; Exit
         }
     }
@@ -1601,14 +2178,14 @@ function Connect-WarpTunnel ($BatFile) {
         & $WarpCli --accept-tos mode warp | Out-Null
     }
     
-    Write-Host "-> Перезапуск сетевой службы Cloudflare WARP..." -ForegroundColor Yellow
+    Write-Step (T 'conn.restart.svc')
     Stop-Service -Name "CloudflareWARP" -Force -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 1
     Start-Service -Name "CloudflareWARP" -ErrorAction SilentlyContinue
     Stop-Process -Name "Cloudflare WARP" -Force -ErrorAction SilentlyContinue
     
     # Wait for daemon to be ready (up to 8 seconds)
-    Write-Host "-> Ожидание готовности интерфейса Cloudflare WARP..." -ForegroundColor Yellow
+    Write-Step (T 'conn.wait.daemon')
     $DaemonReady = $false
     for ($i = 0; $i -lt 16; $i++) {
         $StatusCheck = & $WarpCli --accept-tos status 2>&1 | Out-String
@@ -1619,14 +2196,14 @@ function Connect-WarpTunnel ($BatFile) {
         Start-Sleep -Milliseconds 500
     }
     
-    Write-Host "-> Инициализация туннелирования трафика..." -ForegroundColor Yellow
-    if (-not $DaemonReady) { Write-Host "-> Служба WARP не отвечает, регистрация пропущена." -ForegroundColor Red }
+    Write-Step (T 'conn.init')
+    if (-not $DaemonReady) { Write-Fail (T 'conn.daemon.fail') }
     $RegCheck = & $WarpCli --accept-tos registration show 2>$null | Out-String
     if ($DaemonReady -and (-not $RegCheck -or $RegCheck -match "(?i)error|not registered|No registration")) {
-        Write-Host "-> Регистрация клиентского профиля в сети Cloudflare..." -ForegroundColor Yellow
+        Write-Step (T 'conn.register')
         & $WarpCli --accept-tos registration new 2>$null | Out-Null
         if ($Config.WarpLicense) {
-            Write-Host "-> Применение лицензионного ключа WARP+..." -ForegroundColor Yellow
+            Write-Step (T 'conn.license')
             Set-WarpLicense $Config.WarpLicense | Out-Null
         }
     }
@@ -1647,77 +2224,75 @@ function Show-ActiveSessionMenu ($CurrentInput, $TimerVal) {
     
     Write-Header
     
-    $WarpState = Get-CachedWarpStatus
+    $WarpState = (Get-CachedWarpStatus).Trim()
     
-    Write-Host " Статус соединения WARP : " -NoNewline -ForegroundColor White
     if ($global:TunnelPaused) {
-        Write-Host "ПАУЗА                     " -ForegroundColor Yellow
+        Write-Row (T 'sess.status') (T 'st.paused') "Yellow" 31
     } else {
-        switch ($WarpState.Trim()) {
-            "Connected"     { Write-Host "ПОДКЛЮЧЕН                 " -ForegroundColor Green }
-            "Connecting"    { Write-Host "ПОДКЛЮЧЕНИЕ...            " -ForegroundColor Yellow }
-            "Disconnected"  { Write-Host "ОТКЛЮЧЕН                  " -ForegroundColor Red }
-            "Disconnecting" { Write-Host "ОТКЛЮЧЕНИЕ...             " -ForegroundColor Yellow }
-            "Paused"        { Write-Host "ПАУЗА                     " -ForegroundColor Yellow }
-            default         { Write-Host "$($WarpState.PadRight(25))" -ForegroundColor Red }
+        switch ($WarpState) {
+            "Connected"     { Write-Row (T 'sess.status') (T 'st.connected') "Green" 31 }
+            "Connecting"    { Write-Row (T 'sess.status') (T 'st.connecting') "Yellow" 31 }
+            "Disconnected"  { Write-Row (T 'sess.status') (T 'st.disconnected') "Red" 31 }
+            "Disconnecting" { Write-Row (T 'sess.status') (T 'st.disconnecting') "Yellow" 31 }
+            "Paused"        { Write-Row (T 'sess.status') (T 'st.paused') "Yellow" 31 }
+            default         { Write-Row (T 'sess.status') $WarpState "Red" 31 }
         }
     }
     
-    Write-Host " Внешний IP-адрес       : " -NoNewline -ForegroundColor White
-    if ($global:TunnelPaused -or $WarpState.Trim() -ne "Connected") {
-        Write-Host ("-".PadRight(31)) -ForegroundColor Gray
+    if ($global:TunnelPaused -or $WarpState -ne "Connected") {
+        Write-Row (T 'sess.ip') "-" "Gray" 31
     } else {
-        $DisplayIp = if ($global:CurrentExternalIp) { $global:CurrentExternalIp } else { "определение..." }
-        Write-Host ($DisplayIp.PadRight(31)) -ForegroundColor Gray
+        $DisplayIp = if ($global:CurrentExternalIp) { $global:CurrentExternalIp } else { T 'sess.ip.wait' }
+        Write-Row (T 'sess.ip') $DisplayIp "Gray" 31
     }
     
     if (-not $global:TunnelPaused -and $global:PingResults -and $global:PingResults.Count -gt 0) {
-        Write-Host "=========================================================" -ForegroundColor DarkGray
-        Write-Host " [ Доступность хостов (Ping) ]" -NoNewline -ForegroundColor Cyan
+        Write-Rule
+        Write-Host (" " + (T 'sess.avail')) -NoNewline -ForegroundColor Cyan
         if ($Config.AutoPing -eq 2) {
-            if ($TimerVal -eq "измерение...") {
-                Write-Host " (измерение...)            " -ForegroundColor Yellow
+            if ($TimerVal -eq "measuring") {
+                Write-Host ((" (" + (T 'sess.measuring') + ")").PadRight(34)) -ForegroundColor Yellow
             } else {
-                Write-Host " (следующий опрос через $($TimerVal) сек)   " -ForegroundColor Gray
+                Write-Host ((" (" + (T 'sess.next' $TimerVal) + ")").PadRight(34)) -ForegroundColor Gray
             }
         } else {
-            Write-Host "                                 " -ForegroundColor Gray
+            Write-Host ("".PadRight(34))
         }
         
         foreach ($Ping in $global:PingResults) {
             $DomName = $Ping.Domain
-            if ($DomName.Length -gt 25) { $DomName = $DomName.Substring(0, 22) + "..." }
-            Write-Host "  $($DomName.PadRight(25)) : " -NoNewline
+            if ($DomName.Length -gt 24) { $DomName = $DomName.Substring(0, 21) + "..." }
+            Write-Host ("  " + $DomName.PadRight(24) + " : ") -NoNewline
             if ($Ping.Status -eq "OK") {
-                Write-Host (("$($Ping.Latency) ms").PadRight(30)) -ForegroundColor Green
+                Write-Host ((T 'ms.fmt' $Ping.Latency).PadRight(30)) -ForegroundColor Green
             } elseif ($Ping.Status -eq "Timeout") {
-                Write-Host ("Превышено время ожидания".PadRight(30)) -ForegroundColor Red
+                Write-Host ((T 'sess.timeout').PadRight(30)) -ForegroundColor Red
             } else {
-                Write-Host ("Узел недоступен".PadRight(30)) -ForegroundColor Red
+                Write-Host ((T 'sess.unreachable').PadRight(30)) -ForegroundColor Red
             }
         }
     } else {
-        for ($i=0; $i -lt 5; $i++) {
-            Write-Host "                                                         "
+        for ($i = 0; $i -lt 5; $i++) {
+            Write-Host ("".PadRight(57))
         }
     }
     
-    Write-Host "=========================================================" -ForegroundColor DarkGray
+    Write-Rule
     if ($global:TunnelPaused) {
-        Write-Host " [R]  Возобновить работу туннеля                         " -ForegroundColor Green
+        Write-Item "R" ((T 'sess.resume').PadRight(50)) "Green"
     } else {
-        Write-Host " [P]  Приостановить работу (Пауза)                       " -ForegroundColor Yellow
+        Write-Item "P" ((T 'sess.pause').PadRight(50)) "Yellow"
     }
-    Write-Host " [C]  Переподключить туннель                             " -ForegroundColor Cyan
-    Write-Host " [I]  Сменить IP-адрес (перерегистрация)                 " -ForegroundColor Cyan
-    Write-Host " [M]  Сменить стратегию (Главное меню)                   " -ForegroundColor White
-    Write-Host " [S]  Настройки                                          " -ForegroundColor Yellow
-    Write-Host " [Q]  Отключить туннель и выйти                          " -ForegroundColor Red
-    Write-Host "=========================================================" -ForegroundColor DarkGray
+    Write-Item "C" ((T 'sess.reconnect').PadRight(50)) "Cyan"
+    Write-Item "I" ((T 'sess.changeip').PadRight(50)) "Cyan"
+    Write-Item "M" ((T 'sess.profile').PadRight(50)) "White"
+    Write-Item "S" ((T 'sess.settings').PadRight(50)) "Yellow"
+    Write-Item "Q" ((T 'sess.quit').PadRight(50)) "Red"
+    Write-Rule
     
-    $CleanedInput = $CurrentInput.PadRight(10)
-    Write-Host "Команда: $CleanedInput" -NoNewline
-    [console]::SetCursorPosition(9 + $CurrentInput.Length, [console]::CursorTop)
+    $PromptText = " " + (T 'prompt.cmd') + ": "
+    Write-Host ($PromptText + $CurrentInput.PadRight(10)) -NoNewline
+    [console]::SetCursorPosition($PromptText.Length + $CurrentInput.Length, [console]::CursorTop)
     [console]::CursorVisible = $true
 }
 
@@ -1737,7 +2312,7 @@ function Get-ActiveSessionInput ($BatFile, [ref]$TimeRemainingRef) {
             if ($Config.AutoPing -eq 2 -and -not $global:TunnelPaused) {
                 $TimeRemainingRef.Value--
                 if ($TimeRemainingRef.Value -le 0) {
-                    Show-ActiveSessionMenu $InputStr "измерение..."
+                    Show-ActiveSessionMenu $InputStr "measuring"
                     Measure-Latency
                     $TimeRemainingRef.Value = $Config.PingInterval
                 }
@@ -1753,7 +2328,7 @@ function Get-ActiveSessionInput ($BatFile, [ref]$TimeRemainingRef) {
                     $global:CachedWarpStatus = $null
                     if ((Get-CachedWarpStatus).Trim() -eq "Connected" -and -not $global:TunnelPaused) { Update-CachedExternalIp }
                     if ($Config.AutoPing -ne 0 -and -not $global:TunnelPaused) {
-                        Show-ActiveSessionMenu $InputStr "измерение..."
+                        Show-ActiveSessionMenu $InputStr "measuring"
                         Measure-Latency
                         $TimeRemainingRef.Value = $Config.PingInterval
                     }
@@ -1798,12 +2373,12 @@ function Launch-Tunnel ($BatFile) {
         
         $Success = Connect-WarpTunnel $BatFile
         if (-not $Success) {
-            Write-Host "Ошибка: Отсутствует ответ от службы маршрутизации WARP." -ForegroundColor Red
+            Write-Fail (T 'conn.noresp')
             Wait-Enter; return $false
         }
         
         if ($Config.AutoPing -ne 0) {
-            Write-Host "-> Диагностика задержки узлов (ожидайте)..." -ForegroundColor Yellow
+            Write-Step (T 'sess.measuring.wait')
             Measure-Latency
         }
         
@@ -1823,7 +2398,7 @@ function Launch-Tunnel ($BatFile) {
                 Clear-Host
                 
                 if ($Config.AutoPing -ne 0) {
-                    Write-Host "-> Обновление диагностики (ожидайте)..." -ForegroundColor Yellow
+                    Write-Step (T 'sess.measuring.wait')
                     Measure-Latency
                 }
                 $TimeRemaining = $Config.PingInterval
@@ -1831,7 +2406,7 @@ function Launch-Tunnel ($BatFile) {
                 Show-ActiveSessionMenu "" $TimeRemaining
             }
             elseif ($CleanInput -eq 'q') {
-                Write-Host "`nВы действительно хотите отключить соединение и закрыть программу? (Y/N)" -ForegroundColor Yellow
+                Write-Host ("`n " + (T 'sess.quit.ask') + " [" + (T 'yn') + "]") -ForegroundColor Yellow
                 $Confirm = [console]::ReadKey($true).KeyChar.ToString().ToLower()
                 if ($Confirm -match "[yд]") {
                     return $true
@@ -1840,23 +2415,23 @@ function Launch-Tunnel ($BatFile) {
                 Show-ActiveSessionMenu "" $TimeRemaining
             }
             elseif ($CleanInput -eq 'p' -and -not $global:TunnelPaused) {
-                Write-Host "`n-> Приостановка туннеля..." -ForegroundColor Yellow
+                Write-Host ("`n -> " + (T 'sess.pausing')) -ForegroundColor Yellow
                 & $WarpCli --accept-tos disconnect | Out-Null
                 $global:TunnelPaused = $true
                 Clear-Host
                 Show-ActiveSessionMenu "" $TimeRemaining
             }
             elseif ($CleanInput -eq 'r' -and $global:TunnelPaused) {
-                Write-Host "`n-> Возобновление туннеля..." -ForegroundColor Yellow
+                Write-Host ("`n -> " + (T 'sess.resuming')) -ForegroundColor Yellow
                 $Res = Connect-WarpTunnel $BatFile
                 if ($Res) {
                     $global:TunnelPaused = $false
                     if ($Config.AutoPing -ne 0) {
-                        Write-Host "-> Обновление пинга (ожидайте)..." -ForegroundColor Yellow
+                        Write-Step (T 'sess.measuring.wait')
                         Measure-Latency
                     }
                 } else {
-                    Write-Host "❌ Ошибка возобновления туннеля." -ForegroundColor Red
+                    Write-Fail (T 'sess.resume.fail')
                     Start-Sleep -Seconds 2
                 }
                 $TimeRemaining = $Config.PingInterval
@@ -1864,17 +2439,17 @@ function Launch-Tunnel ($BatFile) {
                 Show-ActiveSessionMenu "" $TimeRemaining
             }
             elseif ($CleanInput -eq 'c') {
-                Write-Host "`n-> Переподключение туннеля..." -ForegroundColor Yellow
+                Write-Host ("`n -> " + (T 'sess.reconnecting')) -ForegroundColor Yellow
                 & $WarpCli --accept-tos disconnect | Out-Null
                 $Res = Connect-WarpTunnel $BatFile
                 if ($Res) {
                     $global:TunnelPaused = $false
                     if ($Config.AutoPing -ne 0) {
-                        Write-Host "-> Обновление пинга (ожидайте)..." -ForegroundColor Yellow
+                        Write-Step (T 'sess.measuring.wait')
                         Measure-Latency
                     }
                 } else {
-                    Write-Host "❌ Ошибка переподключения туннеля." -ForegroundColor Red
+                    Write-Fail (T 'sess.reconnect.fail')
                     Start-Sleep -Seconds 2
                 }
                 $TimeRemaining = $Config.PingInterval
@@ -1882,7 +2457,7 @@ function Launch-Tunnel ($BatFile) {
                 Show-ActiveSessionMenu "" $TimeRemaining
             }
             elseif ($CleanInput -eq 'i') {
-                Write-Host "`nКлиент WARP будет перерегистрирован, адрес может измениться. Продолжить? (Y/N)" -ForegroundColor Yellow
+                Write-Host ("`n " + (T 'ip.ask') + " [" + (T 'yn') + "]") -ForegroundColor Yellow
                 $Ans = [console]::ReadKey($true).KeyChar.ToString().ToLower()
                 if ($Ans -match "[yд]") {
                     $OldIp = if ($global:IpOk) { $global:CurrentExternalIp } else { "" }
@@ -1894,34 +2469,34 @@ function Launch-Tunnel ($BatFile) {
                             if (($Cur.excluded_hosts -and @($Cur.excluded_hosts).Count -gt 0) -or ($Cur.excluded_ips -and @($Cur.excluded_ips).Count -gt 0)) { $RestoreSplit = $true }
                         } catch {}
                     }
-                    Write-Host "-> Удаление текущей регистрации клиента WARP..." -ForegroundColor Yellow
+                    Write-Step (T 'ip.step.reset')
                     & $WarpCli --accept-tos disconnect | Out-Null
                     & $WarpCli --accept-tos registration delete 2>$null | Out-Null
-                    Write-Host "-> Новая регистрация выполнится при подключении." -ForegroundColor Gray
+                    Write-Note (T 'ip.step.new') "Gray"
                     $Res = Connect-WarpTunnel $BatFile
                     if ($Res) {
                         $global:TunnelPaused = $false
                         if ($RestoreSplit) {
-                            Write-Host "-> Восстановление маршрутизации Split Tunneling..." -ForegroundColor Yellow
+                            Write-Step (T 'ip.step.route')
                             Apply-RuBypassTemplate
                         }
-                        Write-Host "-> Определение нового IP-адреса..." -ForegroundColor Yellow
+                        Write-Step (T 'ip.step.detect')
                         Wait-ExternalIp 20
                         if ($Config.AutoPing -ne 0) {
-                            Write-Host "-> Обновление пинга (ожидайте)..." -ForegroundColor Yellow
+                            Write-Step (T 'sess.measuring.wait')
                             Measure-Latency
                         }
                         $NewIp = $global:CurrentExternalIp
-                        $Was = if ($OldIp) { $OldIp } else { "неизвестно" }
+                        $Was = if ($OldIp) { $OldIp } else { T 'ip.unknown.old' }
                         if (-not $global:IpOk) {
-                            Write-Host "Новый IP определить не удалось, нажмите Enter в меню для повторного опроса." -ForegroundColor Yellow
+                            Write-Fail (T 'ip.detect.fail')
                         } elseif ($OldIp -and (($OldIp -split " ")[0] -eq ($NewIp -split " ")[0])) {
-                            Write-Host "Адрес не изменился: $NewIp (Cloudflare выдал тот же)." -ForegroundColor Yellow
+                            Write-Note (T 'ip.same' $NewIp) "Yellow"
                         } else {
-                            Write-Host "IP: $Was -> $NewIp" -ForegroundColor Green
+                            Write-Ok (T 'ip.changed' $Was $NewIp)
                         }
                     } else {
-                        Write-Host "Ошибка подключения после перерегистрации." -ForegroundColor Red
+                        Write-Fail (T 'ip.reconnect.fail')
                     }
                     Start-Sleep -Seconds 4
                 }
@@ -1935,14 +2510,14 @@ function Launch-Tunnel ($BatFile) {
         }
     }
     catch [System.Management.Automation.PipelineStoppedException], [System.Management.Automation.Host.HostException] {
-        Write-Host "`nВы действительно хотите отключить соединение и закрыть программу? (Y/N)" -ForegroundColor Yellow
+        Write-Host ("`n " + (T 'sess.quit.ask') + " [" + (T 'yn') + "]") -ForegroundColor Yellow
         $Confirm = [console]::ReadKey($true).KeyChar.ToString().ToLower()
         if ($Confirm -match "[yд]") {
             return $true
         }
     }
     finally {
-        Write-Host "`n-> Отключение туннеля и очистка маршрутов..." -ForegroundColor Yellow
+        Write-Host ("`n -> " + (T 'sess.closing')) -ForegroundColor Yellow
         try { Stop-Winws } catch {}
         try {
             if (Test-Path $WarpCli) {
@@ -1951,7 +2526,7 @@ function Launch-Tunnel ($BatFile) {
         } catch {}
         $global:ActivePreset = $null
         if ($Watchdog) { Stop-Process -Id $Watchdog.Id -Force -ErrorAction SilentlyContinue }
-        Write-Host "-> Сеанс завершен успешно." -ForegroundColor Green
+        Write-Ok (T 'sess.closed')
         Start-Sleep -Seconds 1
     }
 }
@@ -1980,9 +2555,10 @@ if ($Config.AutoPreset -and $Config.LastPreset -and (Test-Path $Config.LastPrese
     $WaitSecs = $Config.AutoPresetTimeout
     if ($WaitSecs -gt 0) {
         $Interrupted = $false
-        $BatName = Split-Path $Config.LastPreset -Leaf
-        Write-Host "`n-> Запуск профиля [$BatName] начнется через $WaitSecs сек." -ForegroundColor Cyan
-        Write-Host "   Нажмите любую клавишу для отмены и перехода в главное меню..." -ForegroundColor Yellow
+        $BatName = [IO.Path]::GetFileNameWithoutExtension($Config.LastPreset)
+        Write-Host ""
+        Write-Step (T 'auto.starting' $BatName $WaitSecs) "Cyan"
+        Write-Note (T 'auto.cancel') "Yellow"
         
         # Clear console input buffer completely
         while ([console]::KeyAvailable) { $null = [console]::ReadKey($true) }
@@ -2003,28 +2579,34 @@ if ($Config.AutoPreset -and $Config.LastPreset -and (Test-Path $Config.LastPrese
 }
 
 while ($true) {
-    Clear-Host
-    Write-Host "=========================================================" -ForegroundColor Magenta
-    Write-Host $LogoText -ForegroundColor Magenta
-    Write-Host "           Created By BUSH   |   v$AppVersion   " -ForegroundColor Cyan
-    Write-Host "=========================================================" -ForegroundColor DarkGray
-    
     $ZapretDirFullName = if (Test-Path $ZapretDir) { (Get-Item $ZapretDir).FullName } else { "" }
-    $BatFiles = if ($ZapretDirFullName) { Get-ChildItem -Path $ZapretDirFullName -Filter "*.bat" | Where-Object { $_.Name -notmatch "(?i)^service(_install|_remove)?\.bat$" } } else { @() }
+    $BatFiles = if ($ZapretDirFullName) { @(Get-ChildItem -Path $ZapretDirFullName -Filter "*.bat" | Where-Object { $_.Name -notmatch "(?i)^service(_install|_remove)?\.bat$" }) } else { @() }
     
-    Write-Host " [N]   Запустить профиль Zapret (номер из списка)" -ForegroundColor White
-    Write-Host " [S]   Настройки" -ForegroundColor Yellow
-    Write-Host " [Q]   Завершить работу" -ForegroundColor Gray
-    Write-Host "=========================================================" -ForegroundColor DarkGray
+    Clear-Host
+    Write-Header
+    Write-Center ("WarpBypass v" + $AppVersion + "  |  by BUSH") "DarkCyan"
+    Write-Center (T 'main.title')
+    Write-Host (" " + (T 'main.sub')) -ForegroundColor Gray
+    Write-Rule
     
     if ($BatFiles.Count -gt 0) {
         for ($i = 0; $i -lt $BatFiles.Count; $i++) {
-            $Color = if ($BatFiles[$i].Name -like "*alt12*") { "Green" } else { "Gray" }
-            Write-Host " [$($i + 1)] $($BatFiles[$i].Name)" -ForegroundColor $Color
+            $Name = $BatFiles[$i].BaseName
+            $Color = "Gray"
+            $Tag = ""
+            if ($Name -like "*alt12*") { $Color = "Green"; $Tag = "  <- " + (T 'recommended') }
+            if ($Config.LastPreset -and $Config.LastPreset -eq $BatFiles[$i].FullName) { $Color = "Cyan"; $Tag = "  <- " + (T 'main.last') }
+            Write-Item ([string]($i + 1)) ($Name + $Tag) $Color
         }
-    } else { Write-Host " Профили конфигурации не обнаружены." -ForegroundColor Red }
+    } else {
+        Write-Fail (T 'main.noprofiles')
+    }
+    Write-Rule
+    Write-Item "S" (T 'main.settings') "Yellow"
+    Write-Item "Q" (T 'main.quit') "Gray"
+    Write-Rule
     
-    $Cmd = Read-Host "Команда"
+    $Cmd = (Read-Host (" " + (T 'prompt.cmd'))).Trim()
     if ($Cmd.ToLower() -eq 's') { Show-Settings }
     elseif ($Cmd.ToLower() -eq 'q') { Exit }
     else {
