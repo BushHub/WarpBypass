@@ -2,7 +2,7 @@
 @echo off
 title WarpBypass v5.0 by BUSH
 cd /d "%~dp0"
-net session >nul 2>&1
+fltmc >nul 2>&1
 if %errorLevel% neq 0 (
     powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
     exit /b
@@ -44,7 +44,7 @@ try {
     $ConsoleMode = 0
     if ([Win32.Win32Console]::GetConsoleMode($StdInputHandle, [ref]$ConsoleMode)) {
         # Disable Quick-Edit (0x0040) using extended flags (0x0080)
-        [Win32.Win32Console]::SetConsoleMode($StdInputHandle, (($ConsoleMode -band -not 0x0040) -bor 0x0080)) | Out-Null
+        [Win32.Win32Console]::SetConsoleMode($StdInputHandle, (($ConsoleMode -band -bnot 0x0040) -bor 0x0080)) | Out-Null
     }
     
     # Set clean window title bypassing conhost Administrator prefixing
@@ -123,6 +123,11 @@ try {
 
 if (-not (Test-Path $PingListPath)) {
     "discord.com`nyoutube.com`ngoogle.com" | Set-Content $PingListPath -Encoding UTF8
+}
+
+function Wait-Enter {
+    Write-Host " Нажмите Enter для продолжения..." -ForegroundColor Gray
+    Read-Host | Out-Null
 }
 
 function Save-Config { $Config | ConvertTo-Json | Set-Content $ConfigPath }
@@ -362,18 +367,26 @@ function Check-Updates {
         try { Stop-Process -Name "winws" -Force -ErrorAction SilentlyContinue *>$null } catch {}
         Start-Sleep -Milliseconds 500
         
-        Start-DownloadWithProgress -Uri $ZapretUrl -OutFile $ZapretZip -Label "Загрузка компонентов Zapret"
-        if (Test-Path $ZapretZip) {
-            if (Test-Path $ZapretDir) { Remove-Item $ZapretDir -Recurse -Force -ErrorAction SilentlyContinue }
-            Expand-Archive -Path $ZapretZip -DestinationPath $StorageDir -Force
-            $ExtractedDir = Get-ChildItem -Path $StorageDir -Directory | Where-Object { $_.Name -like "zapret-discord-youtube*" } | Select-Object -First 1
-            if ($ExtractedDir) {
-                if (-not (Test-Path $ZapretDir)) { New-Item -ItemType Directory -Path $ZapretDir -Force | Out-Null }
-                Copy-Item -Path "$($ExtractedDir.FullName)\*" -Destination $ZapretDir -Recurse -Force -ErrorAction SilentlyContinue
-                Remove-Item $ExtractedDir.FullName -Recurse -Force -ErrorAction SilentlyContinue
+        $TmpDir = "$StorageDir\zapret_tmp"
+        try {
+            Start-DownloadWithProgress -Uri $ZapretUrl -OutFile $ZapretZip -Label "Загрузка компонентов Zapret"
+            if (Test-Path $TmpDir) { Remove-Item $TmpDir -Recurse -Force -ErrorAction SilentlyContinue }
+            Expand-Archive -Path $ZapretZip -DestinationPath $TmpDir -Force
+            $ExtractedDir = Get-ChildItem -Path $TmpDir -Directory | Where-Object { $_.Name -like "zapret-discord-youtube*" } | Select-Object -First 1
+            if (-not $ExtractedDir -or -not (Test-Path "$($ExtractedDir.FullName)\bin\winws.exe")) {
+                throw "Архив не содержит ожидаемых файлов."
             }
-            Remove-Item $ZapretZip -ErrorAction SilentlyContinue
+            if (Test-Path $ZapretDir) { Remove-Item $ZapretDir -Recurse -Force -ErrorAction Stop }
+            New-Item -ItemType Directory -Path $ZapretDir -Force | Out-Null
+            Copy-Item -Path "$($ExtractedDir.FullName)\*" -Destination $ZapretDir -Recurse -Force
             if ($global:LatestSHA) { Out-File -FilePath $VersionFile -InputObject $global:LatestSHA -Force }
+        } catch {
+            Write-Host "-> Не удалось обновить компоненты Zapret: $($_.Exception.Message)" -ForegroundColor Red
+            if (-not (Test-Path "$ZapretDir\bin\winws.exe")) { Write-Host "   Компоненты отсутствуют, проверьте подключение к GitHub." -ForegroundColor Red }
+            Start-Sleep -Seconds 2
+        } finally {
+            Remove-Item $ZapretZip -ErrorAction SilentlyContinue
+            Remove-Item $TmpDir -Recurse -Force -ErrorAction SilentlyContinue
         }
     }
 }
@@ -753,14 +766,14 @@ function Start-Benchmark {
     $ZapretDirFullName = if (Test-Path $ZapretDir) { (Get-Item $ZapretDir).FullName } else { "" }
     if (-not $ZapretDirFullName) {
         Write-Host "❌ Ошибка: Папка компонентов zapret не найдена." -ForegroundColor Red
-        Pause; return
+        Wait-Enter; return
     }
     
     # Exclude service.bat, service_install.bat, and service_remove.bat
     $BatFiles = Get-ChildItem -Path $ZapretDirFullName -Filter "*.bat" | Where-Object { $_.Name -notmatch "(?i)service(_install|_remove)?\.bat$" }
     if ($BatFiles.Count -eq 0) {
         Write-Host "❌ Ошибка: Файлы пресетов не найдены." -ForegroundColor Red
-        Pause; return
+        Wait-Enter; return
     }
     
     if (Test-Path $WarpCli) {
@@ -835,7 +848,7 @@ function Start-Benchmark {
     if ($Best) {
         Write-Host " -> Рекомендуемая стратегия: " -NoNewline
         Write-Host "[$($Best.Name)]" -ForegroundColor Green -NoNewline
-        Write-Host " (обход: $($Best.SuccessRate)/3 узлов, средний пинг: $($Best.Ping) ms)" -ForegroundColor White
+        Write-Host " (обход: $($Best.SuccessRate)/$($TestTargets.Count) узлов, средний пинг: $($Best.Ping) ms)" -ForegroundColor White
         Write-Host ""
         $SaveChoice = Read-Host " Применить выбранную стратегию как основную для автозапуска? (Y/N)"
         if ($SaveChoice -match "^[YyДд]") {
@@ -1284,7 +1297,14 @@ function Connect-WarpTunnel ($BatFile) {
     } else {
         $ZapretJob = Start-Process -FilePath $BatFile -WorkingDirectory (Split-Path $BatFile) -WindowStyle Hidden -PassThru
     }
-    Start-Sleep -Seconds 4
+    for ($i = 0; $i -lt 20; $i++) {
+        if (Get-Process -Name "winws" -ErrorAction SilentlyContinue) { break }
+        Start-Sleep -Milliseconds 500
+    }
+    Start-Sleep -Seconds 1
+    if (-not (Get-Process -Name "winws" -ErrorAction SilentlyContinue)) {
+        Write-Host "-> Предупреждение: процесс winws не запущен (конфликт WinDivert или антивирус)." -ForegroundColor Red
+    }
     
     if (-not (Test-Path $WarpCli)) {
         $WarpMsi = "$StorageDir\Cloudflare_WARP.msi"
@@ -1295,13 +1315,13 @@ function Connect-WarpTunnel ($BatFile) {
             Remove-Item $WarpMsi -ErrorAction SilentlyContinue
             if (-not (Test-Path $WarpCli)) {
                 Write-Host "`n❌ Критическая ошибка: Установка завершена, но исполняемый файл warp-cli.exe не найден." -ForegroundColor Red
-                Pause; Exit
+                Wait-Enter; Exit
             }
             Write-Host "-> Служба Cloudflare WARP успешно зарегистрирована в системе." -ForegroundColor Green
             Start-Sleep -Seconds 2
         } catch {
             Write-Host "`n❌ Критическая ошибка: Сбой при загрузке или установке Cloudflare WARP." -ForegroundColor Red
-            Pause; Exit
+            Wait-Enter; Exit
         }
     }
     
@@ -1490,7 +1510,7 @@ function Launch-Tunnel ($BatFile) {
         $Success = Connect-WarpTunnel $BatFile
         if (-not $Success) {
             Write-Host "Ошибка: Отсутствует ответ от службы маршрутизации WARP." -ForegroundColor Red
-            Pause; return $true
+            Wait-Enter; return $false
         }
         
         if ($Config.AutoPing -ne 0) {
@@ -1499,7 +1519,7 @@ function Launch-Tunnel ($BatFile) {
         }
         
         $MyPID = $PID
-        Start-Process powershell -ArgumentList @('-NoProfile', '-WindowStyle', 'Hidden', '-Command', "while (Get-Process -Id $MyPID -ErrorAction SilentlyContinue) { Start-Sleep 1 }; & '$WarpCli' --accept-tos disconnect") -WindowStyle Hidden
+        Start-Process powershell -ArgumentList @('-NoProfile', '-WindowStyle', 'Hidden', '-Command', "while (Get-Process -Id $MyPID -ErrorAction SilentlyContinue) { Start-Sleep 1 }; Stop-Process -Name winws -Force -ErrorAction SilentlyContinue; & '$WarpCli' --accept-tos disconnect") -WindowStyle Hidden
         
         # Initial draw of the menu
         Clear-Host
@@ -1588,7 +1608,7 @@ function Launch-Tunnel ($BatFile) {
         Write-Host "`n-> Отключение туннеля и очистка маршрутов..." -ForegroundColor Yellow
         try {
             if (Test-Path $WarpCli) {
-                & $WarpCli --accept-tos disconnect -ErrorAction SilentlyContinue *> $null
+                & $WarpCli --accept-tos disconnect *> $null
             }
             Stop-Process -Name "winws" -Force -ErrorAction SilentlyContinue *> $null
         } catch {}
@@ -1651,9 +1671,9 @@ while ($true) {
     Write-Host "=========================================================" -ForegroundColor DarkGray
     
     $ZapretDirFullName = if (Test-Path $ZapretDir) { (Get-Item $ZapretDir).FullName } else { "" }
-    $BatFiles = if ($ZapretDirFullName) { Get-ChildItem -Path $ZapretDirFullName -Filter "*.bat" | Where-Object { $_.Name -notmatch "service_remove|service_install" } } else { @() }
+    $BatFiles = if ($ZapretDirFullName) { Get-ChildItem -Path $ZapretDirFullName -Filter "*.bat" | Where-Object { $_.Name -notmatch "(?i)^service(_install|_remove)?\.bat$" } } else { @() }
     
-    Write-Host " [1-9] Запустить профиль Zapret" -ForegroundColor White
+    Write-Host " [N]   Запустить профиль Zapret (номер из списка)" -ForegroundColor White
     Write-Host " [S]   Настройки" -ForegroundColor Yellow
     Write-Host " [Q]   Завершить работу" -ForegroundColor Gray
     Write-Host "=========================================================" -ForegroundColor DarkGray
@@ -1665,12 +1685,12 @@ while ($true) {
         }
     } else { Write-Host " Профили конфигурации не обнаружены." -ForegroundColor Red }
     
-    $input = Read-Host "Команда"
-    if ($input.ToLower() -eq 's') { Show-Settings }
-    elseif ($input.ToLower() -eq 'q') { Exit }
+    $Cmd = Read-Host "Команда"
+    if ($Cmd.ToLower() -eq 's') { Show-Settings }
+    elseif ($Cmd.ToLower() -eq 'q') { Exit }
     else {
         $choice = 0
-        if ([int]::TryParse($input, [ref]$choice) -and $choice -ge 1 -and $choice -le $BatFiles.Count) {
+        if ([int]::TryParse($Cmd, [ref]$choice) -and $choice -ge 1 -and $choice -le $BatFiles.Count) {
             $ExitProg = Launch-Tunnel $BatFiles[$choice - 1].FullName
             if ($ExitProg) { Exit }
         }
