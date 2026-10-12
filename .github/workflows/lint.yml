@@ -1,0 +1,33 @@
+name: Lint
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Parse the PowerShell part of WarpBypass.bat
+        shell: pwsh
+        run: |
+          $text = Get-Content -LiteralPath WarpBypass.bat -Raw -Encoding UTF8
+          $idx = $text.IndexOf("`n#>")
+          if ($idx -lt 0) { throw "End of the batch header (#>) not found" }
+          $code = $text.Substring($idx + 3)
+          $tokens = $null
+          $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseInput($code, [ref]$tokens, [ref]$errors)
+          if ($errors.Count -gt 0) {
+            foreach ($e in $errors) { Write-Host "::error::$($e.Message) (line $($e.Extent.StartLineNumber) of the PowerShell part)" }
+            exit 1
+          }
+
+      - name: Check WarpBypass.bat.sha256
+        shell: pwsh
+        run: |
+          $expected = ((Get-Content -LiteralPath WarpBypass.bat.sha256 -Raw).Trim() -split '\s+')[0]
+          $actual = (Get-FileHash -LiteralPath WarpBypass.bat -Algorithm SHA256).Hash
+          if ($expected -ne $actual) { throw "WarpBypass.bat.sha256 is out of date (expected $expected, actual $actual)" }

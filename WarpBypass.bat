@@ -1,6 +1,6 @@
 <# : RUN
 @echo off
-title WarpBypass v5.0 by BUSH
+title WarpBypass v5.1 by BUSH
 cd /d "%~dp0"
 set "WARP_BAT_PATH=%~f0"
 fltmc >nul 2>&1
@@ -20,7 +20,7 @@ $WarningPreference = 'SilentlyContinue'
 # Author: BUSH
 # =========================================================
 
-$AppVersion = "5.0"
+$AppVersion = "5.1"
 $RepoApiUrl = "https://api.github.com/repos/BushHub/WarpBypass/releases/latest"
 
 # Disable console Quick-Edit mode and set clean window title
@@ -237,7 +237,7 @@ $PingListPath = "$StorageDir\ping_list.txt"
 
 Clear-Host
 
-$DefaultConfig = @{ AutoPreset = $false; LastPreset = ""; AutoPresetTimeout = 3; AutoPing = 1; DnsFix = $false; IgnoredVersion = "0.0"; AutoUpdate = $true; AutoKillConflicts = $false; PingInterval = 30; WarpLicense = "" }
+$DefaultConfig = @{ AutoPreset = $false; LastPreset = ""; AutoPresetTimeout = 3; AutoPing = 1; DnsFix = $false; IgnoredVersion = "0.0"; AutoUpdate = $true; PingInterval = 30; WarpLicense = "" }
 
 $FirstRun = -not (Test-Path $ConfigPath)
 if (-not $FirstRun) {
