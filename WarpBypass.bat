@@ -2,13 +2,13 @@
 @echo off
 title WarpBypass v5.0 by BUSH
 cd /d "%~dp0"
+set "WARP_BAT_PATH=%~f0"
 fltmc >nul 2>&1
 if %errorLevel% neq 0 (
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath $env:WARP_BAT_PATH -Verb RunAs"
     exit /b
 )
-set "WARP_BAT_PATH=%~f0"
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-Command -ScriptBlock ([ScriptBlock]::Create((Get-Content -LiteralPath '%~f0' -Encoding UTF8 -Raw)))"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-Command -ScriptBlock ([ScriptBlock]::Create((Get-Content -LiteralPath $env:WARP_BAT_PATH -Encoding UTF8 -Raw)))"
 exit /b
 #>
 
@@ -157,7 +157,7 @@ function Start-DownloadWithProgress {
     )
     
     try {
-        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
         $Request = [System.Net.HttpWebRequest]::Create($Uri)
         $Request.UserAgent = "WarpBypass"
         $Request.Timeout = 20000
@@ -300,10 +300,10 @@ function Check-AppUpdate {
     Write-Host "-> Проверка обновлений WarpBypass..." -ForegroundColor Gray
     
     try {
-        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
         $ReleaseInfo = Invoke-RestMethod -Uri $RepoApiUrl -UseBasicParsing -TimeoutSec 3 -ErrorAction Stop
  
-        $RemoteVersionStr = $ReleaseInfo.tag_name -replace '(?i)^v', ''
+        $RemoteVersionStr = ($ReleaseInfo.tag_name -replace '(?i)^v', '') -replace '[-+].*$', ''
         $RemoteVer = [version]$RemoteVersionStr
         $LocalVer  = [version]$AppVersion
  
@@ -322,6 +322,22 @@ function Check-AppUpdate {
                     $UpdaterBat = "$env:TEMP\WarpBypass_updater.bat"
                     
                     Start-DownloadWithProgress -Uri $DownloadUrl -OutFile $TempFile -Label "Загрузка обновления"
+                    $NewText = Get-Content -LiteralPath $TempFile -Raw -Encoding UTF8
+                    $Expected = $null
+                    try {
+                        $HashText = (Invoke-WebRequest -Uri "$DownloadUrl.sha256" -UseBasicParsing -TimeoutSec 5).Content
+                        $Expected = (([string]$HashText).Trim() -split '\s+')[0]
+                    } catch {}
+                    $Valid = ($NewText -match '^\s*<# : RUN') -and ($NewText -match ('\$AppVersion = "' + [regex]::Escape($RemoteVersionStr) + '"'))
+                    if ($Valid -and $Expected) {
+                        $Valid = ((Get-FileHash -LiteralPath $TempFile -Algorithm SHA256).Hash -eq $Expected)
+                    }
+                    if (-not $Valid) {
+                        Remove-Item -LiteralPath $TempFile -ErrorAction SilentlyContinue
+                        Write-Host "-> Загруженный файл не прошёл проверку, обновление отменено." -ForegroundColor Red
+                        Start-Sleep -Seconds 2
+                        return
+                    }
                     Write-Host "-> Установка пакета обновления..." -ForegroundColor Cyan
                     
                     $UpdaterCode = "@echo off`nchcp 65001 >nul`ntimeout /t 2 /nobreak >nul`nmove /y `"$TempFile`" `"$BatPath`" >nul`nstart `"`" `"$BatPath`"`ndel `"%~f0`""
@@ -372,9 +388,8 @@ function Check-Updates {
             try {
                 $UpdateInfo = Invoke-RestMethod -Uri $RepoAPI -UseBasicParsing -UserAgent "WarpBypass" -TimeoutSec 5 -ErrorAction Stop
                 $global:LatestSHA = $UpdateInfo.sha
-                Out-File -FilePath $LastCheckFile -InputObject ($Today.ToString()) -Force
                 $LocalSHA = if (Test-Path $VersionFile) { (Get-Content $VersionFile).Trim() } else { "" }
-                if ($LocalSHA -ne $global:LatestSHA) { $NeedUpdate = $true }
+                if ($LocalSHA -ne $global:LatestSHA) { $NeedUpdate = $true } else { Out-File -FilePath $LastCheckFile -InputObject ($Today.ToString()) -Force }
             } catch { Write-Host "-> Ошибка проверки зависимостей. Используется локальный кэш." -ForegroundColor DarkGray }
         }
     }
@@ -396,7 +411,8 @@ function Check-Updates {
             if (Test-Path $ZapretDir) { Remove-Item $ZapretDir -Recurse -Force -ErrorAction Stop }
             New-Item -ItemType Directory -Path $ZapretDir -Force | Out-Null
             Copy-Item -Path "$($ExtractedDir.FullName)\*" -Destination $ZapretDir -Recurse -Force
-            if ($global:LatestSHA) { Out-File -FilePath $VersionFile -InputObject $global:LatestSHA -Force }
+            if ($global:LatestSHA) { Out-File -FilePath $VersionFile -InputObject $global:LatestSHA -Force; Out-File -FilePath $LastCheckFile -InputObject ((Get-Date).ToString()) -Force }
+            $global:ZapretEnvBlock = $null
         } catch {
             Write-Host "-> Не удалось обновить компоненты Zapret: $($_.Exception.Message)" -ForegroundColor Red
             if (-not (Test-Path "$ZapretDir\bin\winws.exe")) { Write-Host "   Компоненты отсутствуют, проверьте подключение к GitHub." -ForegroundColor Red }
@@ -412,7 +428,7 @@ function Get-ZapretArgs ($BatFile) {
     $GameFilterTCP = "12"
     $GameFilterUDP = "12"
     try {
-        $EnvBlock = cmd.exe /c "cd /d `"$ZapretDir`" && call service.bat load_game_filter && call service.bat load_user_lists && set"
+        $EnvBlock = if ($global:ZapretEnvBlock) { $global:ZapretEnvBlock } else { $global:ZapretEnvBlock = cmd.exe /c "cd /d `"$ZapretDir`" && call service.bat load_game_filter && call service.bat load_user_lists && set"; $global:ZapretEnvBlock }
         foreach ($Line in $EnvBlock) {
             if ($Line -match "^GameFilterTCP=(.*)$") { $GameFilterTCP = $Matches[1] }
             if ($Line -match "^GameFilterUDP=(.*)$") { $GameFilterUDP = $Matches[1] }
@@ -430,7 +446,7 @@ function Get-ZapretArgs ($BatFile) {
         $ArgsStr = $ArgsStr -replace "%GameFilterTCP%", $GameFilterTCP
         $ArgsStr = $ArgsStr -replace "%GameFilterUDP%", $GameFilterUDP
         $ArgsStr = $ArgsStr -replace "%~dp0", "$ZapretDir\"
-        $ArgsStr = $ArgsStr -replace "\r?\n.*$", ""
+        $ArgsStr = ($ArgsStr -split "\r?\n")[0].Trim()
         return $ArgsStr
     }
     return $null
@@ -447,7 +463,7 @@ function Get-LocalBypassVersion {
 
 function Get-RemoteBypassVersion {
     try {
-        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
         $ver = (Invoke-WebRequest -Uri "$BypassListBaseUrl/ru_bypass_version.txt" -UseBasicParsing -TimeoutSec 5).Content -replace '[\s\r\n]',''
         return $ver
     } catch { return $null }
@@ -485,7 +501,7 @@ function Update-BypassLists {
     }
     
     try {
-        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
         Invoke-WebRequest -Uri "$BypassListBaseUrl/ru_bypass_domain.txt" -OutFile "$BypassCacheDir\ru_bypass_domain.txt" -UseBasicParsing
         Invoke-WebRequest -Uri "$BypassListBaseUrl/ru_bypass_ip.txt"     -OutFile "$BypassCacheDir\ru_bypass_ip.txt"     -UseBasicParsing
         Set-Content -Path "$BypassCacheDir\ru_bypass_version.txt" -Value $RemoteVer -Encoding UTF8
@@ -503,61 +519,50 @@ function Invoke-ParallelWarpCli {
         [int]$ThrottleLimit = 30
     )
     
-    $warpCli = "C:\Program Files\Cloudflare\Cloudflare WARP\warp-cli.exe"
-    if (-not (Test-Path $warpCli)) {
-        # Fallback to variable if defined, or just warp-cli from PATH
-        $warpCli = if ($script:WarpCli) { $script:WarpCli } else { "warp-cli" }
-    }
+    $Cli = if (Test-Path $WarpCli) { $WarpCli } else { "warp-cli" }
+    $Running = [System.Collections.Generic.List[System.Diagnostics.Process]]::new()
+    $Total = $CmdArgs.Count
+    $Next = 0
+    $Done = 0
+    $Failed = 0
     
-    $jobs = [System.Collections.Generic.List[System.Diagnostics.Process]]::new()
-    $total = $CmdArgs.Count
-    $completed = 0
-    
-    foreach ($arg in $CmdArgs) {
-        # Check if we reached the throttle limit
-        while (($jobs | Where-Object { -not $_.HasExited }).Count -ge $ThrottleLimit) {
-            Start-Sleep -Milliseconds 20
+    while ($Next -lt $Total -or $Running.Count -gt 0) {
+        for ($i = $Running.Count - 1; $i -ge 0; $i--) {
+            if ($Running[$i].HasExited) {
+                if ($Running[$i].ExitCode -ne 0) { $Failed++ }
+                $Running[$i].Dispose()
+                $Running.RemoveAt($i)
+                $Done++
+            }
         }
         
-        $argList = [System.Collections.ArrayList]::new()
-        $argList.Add("--accept-tos") | Out-Null
-        foreach ($part in $arg.Split(' ')) {
-            if ($part.Trim() -ne "") { $argList.Add($part.Trim()) | Out-Null }
+        while ($Next -lt $Total -and $Running.Count -lt $ThrottleLimit) {
+            $psi = New-Object System.Diagnostics.ProcessStartInfo
+            $psi.FileName = $Cli
+            $psi.Arguments = "--accept-tos " + $CmdArgs[$Next]
+            $psi.UseShellExecute = $false
+            $psi.CreateNoWindow = $true
+            $psi.RedirectStandardOutput = $true
+            $psi.RedirectStandardError = $true
+            $p = New-Object System.Diagnostics.Process
+            $p.StartInfo = $psi
+            try {
+                [void]$p.Start()
+                $Running.Add($p)
+            } catch {
+                $Failed++
+                $Done++
+            }
+            $Next++
         }
         
-        $psi = New-Object System.Diagnostics.ProcessStartInfo
-        $psi.FileName = $warpCli
-        $psi.Arguments = [string]::Join(" ", $argList.ToArray())
-        $psi.UseShellExecute = $false
-        $psi.CreateNoWindow = $true
-        
-        $p = New-Object System.Diagnostics.Process
-        $p.StartInfo = $psi
-        try {
-            [void]$p.Start()
-            $jobs.Add($p)
-        } catch {}
-        
-        $completedCount = ($jobs | Where-Object { $_.HasExited }).Count
-        if ($completedCount -ne $completed) {
-            $completed = $completedCount
-            $percent = [math]::Round(($completed / $total) * 100)
-            Write-Host -NoNewline "`r   Применение: $percent% ($completed/$total)"
-        }
-    }
-    
-    while (($jobs | Where-Object { -not $_.HasExited }).Count -gt 0) {
-        Start-Sleep -Milliseconds 50
-        $completedCount = ($jobs | Where-Object { $_.HasExited }).Count
-        if ($completedCount -ne $completed) {
-            $completed = $completedCount
-            $percent = [math]::Round(($completed / $total) * 100)
-            Write-Host -NoNewline "`r   Применение: $percent% ($completed/$total)"
-        }
+        $percent = [math]::Round(($Done / [math]::Max(1, $Total)) * 100)
+        Write-Host -NoNewline "`r   Применение: $percent% ($Done/$Total)"
+        Start-Sleep -Milliseconds 30
     }
     
     Write-Host ""
-    foreach ($p in $jobs) { $p.Dispose() }
+    return $Failed
 }
 
 function Apply-RuBypassTemplate {
@@ -583,6 +588,7 @@ function Apply-RuBypassTemplate {
     foreach ($line in (Get-Content $DomainFile)) {
         $line = $line.Trim()
         if ($line -eq "" -or $line.StartsWith("#")) { continue }
+        if ($line -notmatch '^(\*\.)?[^\s/\\"''&|<>]+$') { continue }
         $Domains.Add($line) | Out-Null
     }
     
@@ -590,11 +596,20 @@ function Apply-RuBypassTemplate {
         foreach ($line in (Get-Content $IpFile)) {
             $line = $line.Trim()
             if ($line -eq "" -or $line.StartsWith("#")) { continue }
-            if ($line -match "^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(/\d{1,2})?$") {
+            if ($line -match "^(\d{1,3}(\.\d{1,3}){3})(/(\d{1,2}))?$" -and [ipaddress]::TryParse($Matches[1], [ref]$null) -and (-not $Matches[4] -or [int]$Matches[4] -le 32)) {
                 $IpRanges.Add($line) | Out-Null
             }
         }
     }
+    
+    # Drop entries already covered by a "*.tld" wildcard (e.g. *.ru covers foo.ru)
+    $WildTails = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($d in $Domains) { if ($d -match '^\*\.([^.]+)$') { $WildTails.Add($Matches[1]) | Out-Null } }
+    $Covered = @()
+    foreach ($d in $Domains) {
+        if ($d -notmatch '^\*\.[^.]+$' -and $WildTails.Contains($d.Substring($d.LastIndexOf('.') + 1))) { $Covered += $d }
+    }
+    foreach ($d in $Covered) { $Domains.Remove($d) | Out-Null }
     
     # Read existing exclusions to skip duplicates and avoid useless process spawns
     $ExistingHosts = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
@@ -639,12 +654,16 @@ function Apply-RuBypassTemplate {
     
     if ($Cmds.Count -gt 0) {
         Write-Host "-> Добавление новых исключений в WARP ($($Cmds.Count) команд)..." -ForegroundColor Yellow
-        Invoke-ParallelWarpCli -CmdArgs $Cmds.ToArray() -ThrottleLimit 30
+        $Failed = Invoke-ParallelWarpCli -CmdArgs $Cmds.ToArray() -ThrottleLimit 30
+        if ($Failed -gt 0) { Write-Host "-> Не применено команд: $Failed" -ForegroundColor Red }
+        $WasConnected = ((Get-WarpStatus) -eq "Connected")
         
-        Write-Host "-> Применение завершено. Переподключение туннеля WARP..." -ForegroundColor Yellow
-        & $WarpCli --accept-tos disconnect | Out-Null
-        Start-Sleep -Seconds 1
-        & $WarpCli --accept-tos connect | Out-Null
+        if ($WasConnected -and -not $global:TunnelPaused) {
+            Write-Host "-> Применение завершено. Переподключение туннеля WARP..." -ForegroundColor Yellow
+            & $WarpCli --accept-tos disconnect | Out-Null
+            Start-Sleep -Seconds 1
+            & $WarpCli --accept-tos connect | Out-Null
+        }
         $global:CachedWarpStatus = $null
         Write-Host "✅ Шаблон успешно применен!" -ForegroundColor Green
     } else {
@@ -770,6 +789,27 @@ function Show-SplitTunnelSettings {
     }
 }
 
+function Test-TlsHandshake ($Server, $TimeoutMs = 2500) {
+    $Client = New-Object System.Net.Sockets.TcpClient
+    $Ssl = $null
+    try {
+        $Watch = [System.Diagnostics.Stopwatch]::StartNew()
+        $Task = $Client.ConnectAsync($Server, 443)
+        if (-not $Task.Wait($TimeoutMs)) { return $null }
+        $Left = [math]::Max(500, $TimeoutMs - [int]$Watch.ElapsedMilliseconds)
+        $Ssl = New-Object System.Net.Security.SslStream($Client.GetStream(), $false)
+        $Ar = $Ssl.BeginAuthenticateAsClient($Server, $null, [System.Security.Authentication.SslProtocols]::Tls12, $false, $null, $null)
+        if (-not $Ar.AsyncWaitHandle.WaitOne($Left)) { return $null }
+        $Ssl.EndAuthenticateAsClient($Ar)
+        return [math]::Round($Watch.Elapsed.TotalMilliseconds)
+    } catch {
+        return $null
+    } finally {
+        if ($Ssl) { $Ssl.Dispose() }
+        $Client.Close()
+    }
+}
+
 function Start-Benchmark {
     Clear-Host
     Write-Header
@@ -786,6 +826,8 @@ function Start-Benchmark {
         Wait-Enter; return
     }
     
+    $WasConnected = ((Get-WarpStatus) -eq "Connected")
+    
     # Exclude service.bat, service_install.bat, and service_remove.bat
     $BatFiles = Get-ChildItem -Path $ZapretDirFullName -Filter "*.bat" | Where-Object { $_.Name -notmatch "(?i)service(_install|_remove)?\.bat$" }
     if ($BatFiles.Count -eq 0) {
@@ -801,6 +843,7 @@ function Start-Benchmark {
     Stop-Process -Name "winws" -Force -ErrorAction SilentlyContinue *> $null
     while (Get-Process -Name "winws" -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 100 }
     
+    $TestTargets = @("www.youtube.com", "discord.com", "gateway.discord.gg", "i.ytimg.com")
     $Results = @()
     foreach ($File in $BatFiles) {
         $FileName = $File.Name
@@ -819,26 +862,9 @@ function Start-Benchmark {
         
         $Pings = @()
         $SuccessCount = 0
-        $TestTargets = @(
-            @{ Host = "youtube.com"; Port = 443 }
-            @{ Host = "discord.com"; Port = 443 }
-            @{ Host = "162.159.36.1"; Port = 443 }
-        )
-        
         foreach ($Target in $TestTargets) {
-            try {
-                $TcpClient = New-Object System.Net.Sockets.TcpClient
-                $Watch = [System.Diagnostics.Stopwatch]::StartNew()
-                $AsyncResult = $TcpClient.BeginConnect($Target.Host, $Target.Port, $null, $null)
-                $Success = $AsyncResult.AsyncWaitHandle.WaitOne(1500, $false)
-                if ($Success) {
-                    $TcpClient.EndConnect($AsyncResult)
-                    $Watch.Stop()
-                    $Pings += $Watch.Elapsed.TotalMilliseconds
-                    $SuccessCount++
-                }
-                $TcpClient.Close()
-            } catch {}
+            $Ms = Test-TlsHandshake $Target 2500
+            if ($null -ne $Ms) { $Pings += $Ms; $SuccessCount++ }
         }
         
         # Synchronously stop running winws and wait until port and WinDivert driver are freed
@@ -876,6 +902,11 @@ function Start-Benchmark {
         }
     } else {
         Write-Host "❌ Тестирование завершено: ни одна из стратегий не вернула успешный пинг." -ForegroundColor Red
+    }
+    if ($WasConnected -and $global:ActivePreset) {
+        Write-Host " -> Восстановление активного сеанса..." -ForegroundColor Yellow
+        Connect-WarpTunnel $global:ActivePreset | Out-Null
+        $global:CachedWarpStatus = $null
     }
     Write-Host " Нажмите Enter для возврата..."
     Read-Host | Out-Null
@@ -982,7 +1013,7 @@ function Uninstall-WarpBypass {
         & $WarpCli --accept-tos tunnel ip reset *> $null
     }
     try {
-        Set-Service -Name "CloudflareWARP" -StartupType Manual -ErrorAction SilentlyContinue | Out-Null
+        Set-Service -Name "CloudflareWARP" -StartupType Automatic -ErrorAction SilentlyContinue | Out-Null
     } catch {}
     
     Write-Host "-> Очистка реестра Windows..." -ForegroundColor Yellow
@@ -1004,7 +1035,7 @@ function Uninstall-WarpBypass {
         '-WindowStyle'
         'Hidden'
         '-Command'
-        "while (Get-Process -Id $MyPID -ErrorAction SilentlyContinue) { Start-Sleep 1 }; Remove-Item -Path '$StorageDir' -Recurse -Force -ErrorAction SilentlyContinue"
+        "while (Get-Process -Id $MyPID -ErrorAction SilentlyContinue) { Start-Sleep 1 }; Remove-Item -Path '$($StorageDir.Replace("'","''"))' -Recurse -Force -ErrorAction SilentlyContinue"
     )
     Start-Process powershell -ArgumentList $CmdArgs -WindowStyle Hidden
     
@@ -1144,16 +1175,7 @@ function Show-Settings {
                         try {
                             $Process.Start() | Out-Null
                             
-                            # Fast dynamic wait (up to 1.5s with 20ms polling)
-                            $WaitLimit = 1500
-                            $Elapsed = 0
-                            while ($Elapsed -lt $WaitLimit) {
-                                Start-Sleep -Milliseconds 20
-                                $Elapsed += 20
-                                if ($Process.StandardOutput.Peek() -ne -1) {
-                                    break
-                                }
-                            }
+                            $null = $Process.WaitForExit(1500)
                             
                             if (-not $Process.HasExited) {
                                 $Process.Kill()
@@ -1262,7 +1284,7 @@ function Measure-Latency {
         $TcpClient = New-Object System.Net.Sockets.TcpClient
         $Watch = [System.Diagnostics.Stopwatch]::StartNew()
         try {
-            $AsyncResult = $TcpClient.BeginConnect($CleanDom, 443, $null, $null)
+            $AsyncResult = $TcpClient.ConnectAsync($CleanDom, 443)
             $Jobs += [PSCustomObject]@{ 
                 Domain = $CleanDom; 
                 Client = $TcpClient; 
@@ -1302,7 +1324,7 @@ function Measure-Latency {
         
         if ($AsyncResult.IsCompleted) {
             try {
-                $TcpClient.EndConnect($AsyncResult)
+                if ($AsyncResult.IsFaulted -or -not $TcpClient.Connected) { throw "connect failed" }
                 $PingMs = [math]::Round($Watch.Elapsed.TotalMilliseconds)
                 if ($PingMs -lt 1) { $PingMs = 1 }
                 $global:PingResults += [PSCustomObject]@{ Domain = $CleanDom; Status = "OK"; Latency = $PingMs }
@@ -1389,8 +1411,9 @@ function Connect-WarpTunnel ($BatFile) {
     }
     
     Write-Host "-> Инициализация туннелирования трафика..." -ForegroundColor Yellow
+    if (-not $DaemonReady) { Write-Host "-> Служба WARP не отвечает, регистрация пропущена." -ForegroundColor Red }
     $RegCheck = & $WarpCli --accept-tos registration show 2>$null | Out-String
-    if (-not $RegCheck -or $RegCheck -match "(?i)error|not registered|No registration") {
+    if ($DaemonReady -and (-not $RegCheck -or $RegCheck -match "(?i)error|not registered|No registration")) {
         Write-Host "-> Регистрация клиентского профиля в сети Cloudflare..." -ForegroundColor Yellow
         & $WarpCli --accept-tos registration new 2>$null | Out-Null
         if ($Config.WarpLicense) {
@@ -1553,6 +1576,7 @@ function Get-ActiveSessionInput ($BatFile, [ref]$TimeRemainingRef) {
 function Launch-Tunnel ($BatFile) {
     $Config.LastPreset = $BatFile
     Save-Config
+    $global:ActivePreset = $BatFile
     
     $global:TunnelPaused = $false
     $TimeRemaining = $Config.PingInterval
@@ -1714,6 +1738,7 @@ function Launch-Tunnel ($BatFile) {
             }
             Stop-Process -Name "winws" -Force -ErrorAction SilentlyContinue *> $null
         } catch {}
+        $global:ActivePreset = $null
         Write-Host "-> Сеанс завершен успешно." -ForegroundColor Green
         Start-Sleep -Seconds 1
     }
