@@ -726,9 +726,7 @@ function Apply-RuBypassTemplate {
         
         if ($WasConnected -and -not $global:TunnelPaused) {
             Write-Host "-> Применение завершено. Переподключение туннеля WARP..." -ForegroundColor Yellow
-            & $WarpCli --accept-tos disconnect | Out-Null
-            Start-Sleep -Seconds 1
-            & $WarpCli --accept-tos connect | Out-Null
+            Restart-WarpConnection
         }
         $global:CachedWarpStatus = $null
         Write-Host "✅ Шаблон успешно применен!" -ForegroundColor Green
@@ -842,10 +840,7 @@ function Show-SplitTunnelSettings {
                     Write-Host "Все кастомные исключения сброшены." -ForegroundColor Green
                     if ((Get-CachedWarpStatus) -eq "Connected") {
                         Write-Host "-> Переподключение туннеля WARP..." -ForegroundColor Yellow
-                        & $WarpCli --accept-tos disconnect | Out-Null
-                        Start-Sleep -Seconds 1
-                        & $WarpCli --accept-tos connect | Out-Null
-                        $global:CachedWarpStatus = $null
+                        Restart-WarpConnection
                     }
                     Start-Sleep -Seconds 2
                 }
@@ -1404,6 +1399,49 @@ function Measure-Latency {
     }
 }
 
+function Start-Winws ($BatFile) {
+    try { Stop-Winws } catch {}
+    Write-Host "-> Запуск сетевого фильтра winws (в фоновом режиме)..." -ForegroundColor Yellow
+    $ArgsStr = Get-ZapretArgs $BatFile
+    if ($null -ne $ArgsStr) {
+        $Job = Start-Process -FilePath "$ZapretDir\bin\winws.exe" -ArgumentList $ArgsStr -WorkingDirectory "$ZapretDir\bin" -WindowStyle Hidden -PassThru
+    } else {
+        $Job = Start-Process -FilePath $BatFile -WorkingDirectory (Split-Path $BatFile) -WindowStyle Hidden -PassThru
+    }
+    Add-WinwsToJob $Job
+    for ($i = 0; $i -lt 20; $i++) {
+        if (Get-Process -Name "winws" -ErrorAction SilentlyContinue) { break }
+        Start-Sleep -Milliseconds 500
+    }
+    Start-Sleep -Seconds 1
+    if (-not (Get-Process -Name "winws" -ErrorAction SilentlyContinue)) {
+        Write-Host "-> Предупреждение: процесс winws не запущен (конфликт WinDivert или антивирус)." -ForegroundColor Red
+    }
+}
+
+function Wait-WarpConnected ($Seconds = 30) {
+    while ($Seconds -gt 0) {
+        $WarpStatus = & $WarpCli --accept-tos status | Out-String
+        if ($WarpStatus -and $WarpStatus.Contains("Connected") -and -not $WarpStatus.Contains("Connecting")) { return $true }
+        Start-Sleep -Seconds 1
+        $Seconds--
+    }
+    return $false
+}
+
+# Reconnect the tunnel: winws on -> reconnect -> winws off (winws is only needed while WARP is connecting)
+function Restart-WarpConnection {
+    $Preset = $global:ActivePreset
+    if ($Preset) { Start-Winws $Preset }
+    & $WarpCli --accept-tos disconnect | Out-Null
+    Start-Sleep -Seconds 1
+    & $WarpCli --accept-tos connect | Out-Null
+    $Ok = Wait-WarpConnected 30
+    if ($Preset) { try { Stop-Winws } catch {} }
+    $global:CachedWarpStatus = $null
+    if ($Ok) { Update-CachedExternalIp }
+}
+
 function Connect-WarpTunnel ($BatFile) {
     try { Stop-Service -Name "zapret" -Force -ErrorAction SilentlyContinue *> $null } catch {}
     try { Stop-Service -Name "goodbyedpi" -Force -ErrorAction SilentlyContinue *> $null } catch {}
@@ -1415,25 +1453,7 @@ function Connect-WarpTunnel ($BatFile) {
         ipconfig /flushdns | Out-Null
     }
     
-    Write-Host "-> Запуск сетевого фильтра winws (в фоновом режиме)..." -ForegroundColor Yellow
-    $ArgsStr = Get-ZapretArgs $BatFile
-    $ZapretJob = $null
-    if ($null -ne $ArgsStr) {
-        $WinwsPath = "$ZapretDir\bin\winws.exe"
-        $ZapretJob = Start-Process -FilePath $WinwsPath -ArgumentList $ArgsStr -WorkingDirectory "$ZapretDir\bin" -WindowStyle Hidden -PassThru
-        Add-WinwsToJob $ZapretJob
-    } else {
-        $ZapretJob = Start-Process -FilePath $BatFile -WorkingDirectory (Split-Path $BatFile) -WindowStyle Hidden -PassThru
-        Add-WinwsToJob $ZapretJob
-    }
-    for ($i = 0; $i -lt 20; $i++) {
-        if (Get-Process -Name "winws" -ErrorAction SilentlyContinue) { break }
-        Start-Sleep -Milliseconds 500
-    }
-    Start-Sleep -Seconds 1
-    if (-not (Get-Process -Name "winws" -ErrorAction SilentlyContinue)) {
-        Write-Host "-> Предупреждение: процесс winws не запущен (конфликт WinDivert или антивирус)." -ForegroundColor Red
-    }
+    Start-Winws $BatFile
     
     if (-not (Test-Path $WarpCli)) {
         $WarpMsi = "$StorageDir\Cloudflare_WARP.msi"
@@ -1491,14 +1511,10 @@ function Connect-WarpTunnel ($BatFile) {
     }
     & $WarpCli --accept-tos connect | Out-Null
     
-    $Timeout = 30
-    $Connected = $false
-    while ($Timeout -gt 0) {
-        $WarpStatus = & $WarpCli --accept-tos status | Out-String
-        if ($WarpStatus -and $WarpStatus.Contains("Connected") -and -not $WarpStatus.Contains("Connecting")) { $Connected = $true; break }
-        Start-Sleep -Seconds 1
-        $Timeout--
-    }
+    $Connected = Wait-WarpConnected 30
+    
+    # winws is only needed to get WARP connected
+    try { Stop-Winws } catch {}
     
     if ($Connected) { Update-CachedExternalIp }
     return $Connected
