@@ -55,6 +55,64 @@ try {
 } catch {}
 
 
+# Job object with KILL_ON_JOB_CLOSE: child winws dies together with this process (window close, crash, kill)
+try {
+    if (-not ("WinwsJob" -as [type])) {
+        Add-Type -ErrorAction Stop -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class WinwsJob {
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern IntPtr CreateJobObject(IntPtr attrs, string name);
+    [DllImport("kernel32.dll")] static extern bool SetInformationJobObject(IntPtr job, int infoClass, IntPtr info, uint size);
+    [DllImport("kernel32.dll")] static extern bool AssignProcessToJobObject(IntPtr job, IntPtr process);
+    [StructLayout(LayoutKind.Sequential)] struct BASIC {
+        public long PerProcessUserTimeLimit; public long PerJobUserTimeLimit; public uint LimitFlags;
+        public UIntPtr MinimumWorkingSetSize; public UIntPtr MaximumWorkingSetSize; public uint ActiveProcessLimit;
+        public UIntPtr Affinity; public uint PriorityClass; public uint SchedulingClass;
+    }
+    [StructLayout(LayoutKind.Sequential)] struct IOC {
+        public ulong ReadOps; public ulong WriteOps; public ulong OtherOps; public ulong ReadBytes; public ulong WriteBytes; public ulong OtherBytes;
+    }
+    [StructLayout(LayoutKind.Sequential)] struct EXT {
+        public BASIC Basic; public IOC Io; public UIntPtr ProcessMemoryLimit; public UIntPtr JobMemoryLimit;
+        public UIntPtr PeakProcessMemoryUsed; public UIntPtr PeakJobMemoryUsed;
+    }
+    static IntPtr job = IntPtr.Zero;
+    public static bool Assign(IntPtr process) {
+        if (job == IntPtr.Zero) {
+            job = CreateJobObject(IntPtr.Zero, null);
+            if (job == IntPtr.Zero) return false;
+            EXT info = new EXT();
+            info.Basic.LimitFlags = 0x2000; // JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+            int size = Marshal.SizeOf(typeof(EXT));
+            IntPtr buf = Marshal.AllocHGlobal(size);
+            try {
+                Marshal.StructureToPtr(info, buf, false);
+                if (!SetInformationJobObject(job, 9, buf, (uint)size)) { job = IntPtr.Zero; return false; }
+            } finally { Marshal.FreeHGlobal(buf); }
+        }
+        return AssignProcessToJobObject(job, process);
+    }
+}
+'@
+    }
+} catch {}
+
+function Add-WinwsToJob ($Proc) {
+    if (-not $Proc) { return }
+    try { [void][WinwsJob]::Assign($Proc.Handle) } catch {}
+}
+
+function Stop-Winws {
+    for ($i = 0; $i -lt 10; $i++) {
+        $Procs = @(Get-Process -Name "winws" -ErrorAction SilentlyContinue)
+        if ($Procs.Count -eq 0) { return }
+        $Procs | Stop-Process -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Milliseconds 200
+    }
+    & taskkill.exe /F /T /IM winws.exe *> $null
+}
+
 function Get-WarpStatus {
     if (Test-Path $WarpCli) {
         $Status = & $WarpCli --accept-tos status 2>$null | Out-String
@@ -404,7 +462,7 @@ function Check-Updates {
     
     if ($NeedUpdate) {
         # Make sure no running winws is locking files
-        try { Stop-Process -Name "winws" -Force -ErrorAction SilentlyContinue *>$null } catch {}
+        try { Stop-Winws } catch {}
         Start-Sleep -Milliseconds 500
         
         $TmpDir = "$StorageDir\zapret_tmp"
@@ -848,8 +906,7 @@ function Start-Benchmark {
     }
     
     # Clean previous winws processes
-    Stop-Process -Name "winws" -Force -ErrorAction SilentlyContinue *> $null
-    while (Get-Process -Name "winws" -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 100 }
+    Stop-Winws
     
     $TestTargets = @("www.youtube.com", "discord.com", "gateway.discord.gg", "i.ytimg.com")
     $Results = @()
@@ -862,8 +919,10 @@ function Start-Benchmark {
         if ($null -ne $ArgsStr) {
             $WinwsPath = "$ZapretDir\bin\winws.exe"
             $ZapretJob = Start-Process -FilePath $WinwsPath -ArgumentList $ArgsStr -WorkingDirectory "$ZapretDir\bin" -WindowStyle Hidden -PassThru
+            Add-WinwsToJob $ZapretJob
         } else {
             $ZapretJob = Start-Process -FilePath $File.FullName -WorkingDirectory (Split-Path $File.FullName) -WindowStyle Hidden -PassThru
+            Add-WinwsToJob $ZapretJob
         }
         
         Start-Sleep -Seconds 3
@@ -877,8 +936,7 @@ function Start-Benchmark {
         
         # Synchronously stop running winws and wait until port and WinDivert driver are freed
         if ($ZapretJob) { Stop-Process -Id $ZapretJob.Id -Force -ErrorAction SilentlyContinue *> $null }
-        Stop-Process -Name "winws" -Force -ErrorAction SilentlyContinue *> $null
-        while (Get-Process -Name "winws" -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 100 }
+        Stop-Winws
         Start-Sleep -Milliseconds 500
         
         if ($SuccessCount -gt 0) {
@@ -1008,7 +1066,7 @@ function Uninstall-WarpBypass {
     Write-Host "=========================================================" -ForegroundColor DarkGray
     
     Write-Host "-> Завершение фоновых модулей маскировки трафика..." -ForegroundColor Yellow
-    try { Stop-Process -Name "winws" -Force -ErrorAction SilentlyContinue *>$null } catch {}
+    try { Stop-Winws } catch {}
     Start-Sleep -Seconds 1
     
 
@@ -1349,7 +1407,7 @@ function Measure-Latency {
 function Connect-WarpTunnel ($BatFile) {
     try { Stop-Service -Name "zapret" -Force -ErrorAction SilentlyContinue *> $null } catch {}
     try { Stop-Service -Name "goodbyedpi" -Force -ErrorAction SilentlyContinue *> $null } catch {}
-    try { Stop-Process -Name "winws" -Force -ErrorAction SilentlyContinue *> $null } catch {}
+    try { Stop-Winws } catch {}
     try { Stop-Process -Name "goodbyedpi" -Force -ErrorAction SilentlyContinue *> $null } catch {}
 
     if ($Config.DnsFix) {
@@ -1363,8 +1421,10 @@ function Connect-WarpTunnel ($BatFile) {
     if ($null -ne $ArgsStr) {
         $WinwsPath = "$ZapretDir\bin\winws.exe"
         $ZapretJob = Start-Process -FilePath $WinwsPath -ArgumentList $ArgsStr -WorkingDirectory "$ZapretDir\bin" -WindowStyle Hidden -PassThru
+        Add-WinwsToJob $ZapretJob
     } else {
         $ZapretJob = Start-Process -FilePath $BatFile -WorkingDirectory (Split-Path $BatFile) -WindowStyle Hidden -PassThru
+        Add-WinwsToJob $ZapretJob
     }
     for ($i = 0; $i -lt 20; $i++) {
         if (Get-Process -Name "winws" -ErrorAction SilentlyContinue) { break }
@@ -1741,11 +1801,11 @@ function Launch-Tunnel ($BatFile) {
     }
     finally {
         Write-Host "`n-> Отключение туннеля и очистка маршрутов..." -ForegroundColor Yellow
+        try { Stop-Winws } catch {}
         try {
             if (Test-Path $WarpCli) {
                 & $WarpCli --accept-tos disconnect *> $null
             }
-            Stop-Process -Name "winws" -Force -ErrorAction SilentlyContinue *> $null
         } catch {}
         $global:ActivePreset = $null
         if ($Watchdog) { Stop-Process -Id $Watchdog.Id -Force -ErrorAction SilentlyContinue }
