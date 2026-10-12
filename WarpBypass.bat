@@ -133,7 +133,7 @@ function Stop-WinDivert {
 # Format: key=value, one per line. Placeholders: {0}, {1}. No backslashes.
 # ---------------------------------------------------------
 $StringsRu = @'
-yn=Д/Н
+yn=Y/N
 prompt.choose=Выберите пункт
 prompt.cmd=Команда
 press.enter=Нажмите Enter, чтобы продолжить
@@ -704,6 +704,7 @@ function Write-Center ([string]$Text, $Color = "Cyan") {
 
 # Screen: logo, centered title, optional gray description lines, rule
 function Write-Screen ([string]$Title, [string[]]$Sub = @(), $TitleColor = "Cyan") {
+    Set-ConsoleQuickEdit $false
     Clear-Host
     Write-Header
     Write-Center $Title $TitleColor
@@ -737,11 +738,14 @@ function Write-Fail ([string]$Text) { Write-Host (" [!] " + $Text) -ForegroundCo
 function Write-Note ([string]$Text, $Color = "Gray") { Write-Host ("      " + $Text) -ForegroundColor $Color }
 
 function Read-Choice {
-    return (Read-Host (" " + (T 'prompt.choose'))).Trim().ToLower()
+    $Answer = Read-Host (" " + (T 'prompt.choose'))
+    Set-ConsoleQuickEdit $false
+    return $Answer.Trim().ToLower()
 }
 
 function Read-Confirm ([string]$Text, [bool]$Default = $false) {
     $Answer = (Read-Host (" " + $Text + " [" + (T 'yn') + "]")).Trim()
+    Set-ConsoleQuickEdit $false
     if ($Answer -eq "") { return $Default }
     return ($Answer -match "^[YyДд]")
 }
@@ -749,6 +753,7 @@ function Read-Confirm ([string]$Text, [bool]$Default = $false) {
 function Wait-Enter {
     Write-Host (" " + (T 'press.enter')) -ForegroundColor Gray
     Read-Host | Out-Null
+    Set-ConsoleQuickEdit $false
 }
 
 # Quick-Edit is switched off for the session (accidental clicks freeze the console);
@@ -1360,6 +1365,15 @@ function Invoke-ParallelWarpCli {
     return $Failures.ToArray()
 }
 
+# WARP works with ASCII host names: "*.бел" -> "*.xn--90ais"
+function ConvertTo-AsciiDomain ([string]$Name) {
+    if ($Name -match "^[\x00-\x7F]*$") { return $Name }
+    try {
+        $Idn = New-Object System.Globalization.IdnMapping
+        return (($Name.Split('.') | ForEach-Object { if ($_ -match "^[\x00-\x7F]*$") { $_ } else { $Idn.GetAscii($_) } }) -join '.')
+    } catch { return $Name }
+}
+
 function Apply-RuBypassTemplate {
     $DomainFile = "$BypassCacheDir\ru_bypass_domain.txt"
     $IpFile     = "$BypassCacheDir\ru_bypass_ip.txt"
@@ -1380,15 +1394,15 @@ function Apply-RuBypassTemplate {
     $Domains  = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     $IpRanges = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     
-    foreach ($line in (Get-Content $DomainFile)) {
+    foreach ($line in (Get-Content $DomainFile -Encoding UTF8)) {
         $line = $line.Trim()
         if ($line -eq "" -or $line.StartsWith("#")) { continue }
         if ($line -notmatch '^(\*\.)?[^\s/\\"''&|<>]+$') { continue }
-        $Domains.Add($line) | Out-Null
+        [void]$Domains.Add((ConvertTo-AsciiDomain $line))
     }
     
     if (Test-Path $IpFile) {
-        foreach ($line in (Get-Content $IpFile)) {
+        foreach ($line in (Get-Content $IpFile -Encoding UTF8)) {
             $line = $line.Trim()
             if ($line -eq "" -or $line.StartsWith("#")) { continue }
             if ($line -match "^(\d{1,3}(\.\d{1,3}){3})(/(\d{1,2}))?$" -and [ipaddress]::TryParse($Matches[1], [ref]$null) -and (-not $Matches[4] -or [int]$Matches[4] -le 32)) {
@@ -1462,7 +1476,7 @@ function Get-MissingRuleCommands ($Domains, $IpRanges) {
     
     if (Test-Path $WarpSettingsPath) {
         try {
-            $WarpSettings = Get-Content $WarpSettingsPath -Raw | ConvertFrom-Json
+            $WarpSettings = Get-Content $WarpSettingsPath -Raw -Encoding UTF8 | ConvertFrom-Json
             if ($WarpSettings.excluded_hosts) {
                 foreach ($e in $WarpSettings.excluded_hosts) {
                     $k = if ($e -is [Array]) { $e[0] } else { $e }
@@ -2152,10 +2166,20 @@ function Start-Winws ($BatFile) {
 
 function Wait-WarpConnected ($Seconds = 30) {
     while ($Seconds -gt 0) {
-        $WarpStatus = & $WarpCli --accept-tos status | Out-String
+        $WarpStatus = & $WarpCli --accept-tos status 2>&1 | Out-String
         if ($WarpStatus -and $WarpStatus.Contains("Connected") -and -not $WarpStatus.Contains("Connecting")) { return $true }
         Start-Sleep -Seconds 1
         $Seconds--
+    }
+    return $false
+}
+
+# The WARP service is briefly unavailable after many settings changes ("IPC responder dropped")
+function Wait-WarpDaemon ($Seconds = 30) {
+    for ($i = 0; $i -lt $Seconds; $i++) {
+        $St = & $WarpCli --accept-tos status 2>&1 | Out-String
+        if ($St -and $St -notmatch "(?i)Unable to connect|IPC|channel closed|responder dropped|not running") { return $true }
+        Start-Sleep -Seconds 1
     }
     return $false
 }
@@ -2164,15 +2188,17 @@ function Wait-WarpConnected ($Seconds = 30) {
 function Restart-WarpConnection {
     $Preset = $global:ActivePreset
     if ($Preset) { Start-Winws $Preset }
-    & $WarpCli --accept-tos disconnect | Out-Null
+    [void](Wait-WarpDaemon 30)
+    & $WarpCli --accept-tos disconnect 2>&1 | Out-Null
     Start-Sleep -Seconds 1
-    & $WarpCli --accept-tos connect | Out-Null
+    & $WarpCli --accept-tos connect 2>&1 | Out-Null
     $Ok = Wait-WarpConnected 60
     if (-not $Ok) {
         Write-Step (T 'conn.retry')
-        & $WarpCli --accept-tos disconnect | Out-Null
+        [void](Wait-WarpDaemon 30)
+        & $WarpCli --accept-tos disconnect 2>&1 | Out-Null
         Start-Sleep -Seconds 2
-        & $WarpCli --accept-tos connect | Out-Null
+        & $WarpCli --accept-tos connect 2>&1 | Out-Null
         $Ok = Wait-WarpConnected 45
     }
     if ($Preset) {
@@ -2232,9 +2258,19 @@ function Connect-WarpTunnel ($BatFile) {
         try {
             Start-DownloadWithProgress -Uri "https://downloads.cloudflareclient.com/v1/download/windows/ga" -OutFile $WarpMsi -Label (T 'conn.dl.warp')
             Write-Step (T 'conn.install.warp') "Gray"
+            Set-ConsoleQuickEdit $false
             $Msi = Start-Process msiexec.exe -ArgumentList "/i `"$WarpMsi`" /qn /norestart ONBOARDING=false START_WPF_AS_USER=0" -PassThru -WindowStyle Hidden
             # the installer launches the WARP window: close it as soon as it appears, also right after the install ends
-            while (-not $Msi.HasExited) { Stop-WarpGui; Start-Sleep -Milliseconds 200 }
+            $Deadline = [DateTime]::Now.AddMinutes(5)
+            $Tick = 0
+            while (-not $Msi.HasExited -and [DateTime]::Now -lt $Deadline) {
+                Stop-WarpGui
+                Start-Sleep -Milliseconds 200
+                $Tick++
+                if ($Tick % 10 -eq 0) { Write-Host "." -NoNewline -ForegroundColor Gray }
+            }
+            if (-not $Msi.HasExited) { try { $Msi.Kill() } catch {} }
+            Write-Host ""
             for ($i = 0; $i -lt 15; $i++) { Stop-WarpGui; Start-Sleep -Milliseconds 200 }
             Remove-WarpGuiAutostart
             Remove-Item $WarpMsi -ErrorAction SilentlyContinue
