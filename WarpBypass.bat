@@ -5,7 +5,7 @@ cd /d "%~dp0"
 set "WARP_BAT_PATH=%~f0"
 fltmc >nul 2>&1
 if %errorLevel% neq 0 (
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath $env:WARP_BAT_PATH -Verb RunAs"
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "$q=[string][char]39; $c='$env:WARP_BAT_PATH='+$q+$env:WARP_BAT_PATH.Replace($q,$q+$q)+$q+'; Invoke-Command -ScriptBlock ([ScriptBlock]::Create((Get-Content -LiteralPath $env:WARP_BAT_PATH -Encoding UTF8 -Raw)))'; $e=[Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($c)); Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-EncodedCommand',$e"
     exit /b
 )
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-Command -ScriptBlock ([ScriptBlock]::Create((Get-Content -LiteralPath $env:WARP_BAT_PATH -Encoding UTF8 -Raw)))"
@@ -21,6 +21,9 @@ $WarningPreference = 'SilentlyContinue'
 # =========================================================
 
 $AppVersion = "5.1"
+
+# The file was started by the user: drop the "downloaded from the Internet" mark so Windows stops warning on every launch
+try { Unblock-File -LiteralPath $env:WARP_BAT_PATH -ErrorAction SilentlyContinue } catch {}
 $RepoApiUrl = "https://api.github.com/repos/BushHub/WarpBypass/releases/latest"
 
 # Disable console Quick-Edit mode and set clean window title
@@ -153,6 +156,8 @@ wiz.welcome1=WarpBypass обходит блокировки через Cloudflar
 wiz.welcome2=Настройка займёт два коротких шага.
 wiz.step1=Шаг 1 из 2. Параметры системы
 wiz.dns=Очищать кэш DNS при подключении? (рекомендуется)
+wiz.route=Включить маршрутизацию «Россия напрямую»? (рекомендуется)
+wiz.route.applying=Применение маршрутизации «Россия напрямую»...
 wiz.upd=Автоматически проверять обновления? (рекомендуется)
 wiz.profile.title=ПРОФИЛЬ ОБХОДА
 wiz.profile.hint=Шаг 2 из 2. Разным провайдерам подходят разные профили.
@@ -205,6 +210,8 @@ ru.daemon=Служба WARP не отвечает. Правила не прим�
 conn.slow=Подключение занимает больше времени. Модуль обхода оставлен включённым и отключится после подключения.
 conn.retry=Повторная попытка подключения...
 wait.install=Установка Cloudflare WARP
+wait.uninstall=Удаление Cloudflare WARP
+wait.winws=Запуск модуля обхода (winws)
 wait.daemon=Ожидание службы WARP
 wait.connect=Подключение WARP
 wait.ip=Определение IP-адреса
@@ -263,6 +270,9 @@ ping.int.bad=Некорректное значение, установлено 3
 ping.reset.ask=Вернуть стандартные параметры проверки?
 ping.reset.done=Параметры проверки сброшены.
 un.title=УДАЛЕНИЕ WARPBYPASS
+un.warp.ask=Также удалить клиент Cloudflare WARP (Cloudflare One Client) с этого компьютера?
+un.warp.done=Клиент Cloudflare WARP удалён.
+un.warp.fail=Не удалось удалить клиент Cloudflare WARP. Его можно удалить вручную в списке установленных приложений.
 un.stop=Остановка модулей обхода...
 un.restore=Восстановление настроек Cloudflare WARP...
 un.registry=Очистка автозапуска в реестре...
@@ -343,7 +353,6 @@ set.i3=Диагностика
 set.i3.d=доступность, статистика, подбор
 set.i4=Система
 set.i4.d=язык, ключ WARP+, обновления
-winws.start=Запуск модуля обхода (winws)...
 winws.fail=Модуль winws не запустился (возможен конфликт WinDivert или антивирус).
 conn.flushdns=Очистка кэша DNS...
 conn.dl.warp=Загрузка Cloudflare WARP
@@ -429,6 +438,8 @@ wiz.welcome1=WarpBypass bypasses blocks through Cloudflare WARP.
 wiz.welcome2=Setup takes just two short steps.
 wiz.step1=Step 1 of 2. System options
 wiz.dns=Flush the DNS cache on connect? (recommended)
+wiz.route=Enable "Russia direct" routing? (recommended)
+wiz.route.applying=Applying "Russia direct" routing...
 wiz.upd=Check for updates automatically? (recommended)
 wiz.profile.title=BYPASS PROFILE
 wiz.profile.hint=Step 2 of 2. Different ISPs need different profiles.
@@ -481,6 +492,8 @@ ru.daemon=The WARP service is not responding. The rules were not applied.
 conn.slow=Connecting takes longer than usual. The bypass module was left running and will stop after the connection is up.
 conn.retry=Retrying the connection...
 wait.install=Installing Cloudflare WARP
+wait.uninstall=Removing Cloudflare WARP
+wait.winws=Starting the bypass module (winws)
 wait.daemon=Waiting for the WARP service
 wait.connect=Connecting WARP
 wait.ip=Detecting the IP address
@@ -539,6 +552,9 @@ ping.int.bad=Invalid value, set to 30 sec.
 ping.reset.ask=Restore the default check settings?
 ping.reset.done=Check settings reset.
 un.title=UNINSTALL WARPBYPASS
+un.warp.ask=Also remove the Cloudflare WARP client (Cloudflare One Client) from this computer?
+un.warp.done=The Cloudflare WARP client was removed.
+un.warp.fail=Could not remove the Cloudflare WARP client. You can remove it manually in the installed apps list.
 un.stop=Stopping bypass modules...
 un.restore=Restoring Cloudflare WARP settings...
 un.registry=Cleaning startup entries in the registry...
@@ -619,7 +635,6 @@ set.i3=Diagnostics
 set.i3.d=availability, statistics, test
 set.i4=System
 set.i4.d=language, WARP+ key, updates
-winws.start=Starting the bypass module (winws)...
 winws.fail=The winws module did not start (possible WinDivert conflict or antivirus).
 conn.flushdns=Flushing the DNS cache...
 conn.dl.warp=Downloading Cloudflare WARP
@@ -936,7 +951,7 @@ $PingListPath = "$StorageDir\ping_list.txt"
 
 Clear-Host
 
-$DefaultConfig = @{ AutoPreset = $false; LastPreset = ""; AutoPresetTimeout = 0; Language = ""; AutoPing = 1; DnsFix = $false; IgnoredVersion = "0.0"; AutoUpdate = $true; PingInterval = 30; WarpLicense = "" }
+$DefaultConfig = @{ AutoPreset = $false; LastPreset = ""; AutoPresetTimeout = 0; Language = ""; PendingRuRouting = $false; AutoPing = 1; DnsFix = $false; IgnoredVersion = "0.0"; AutoUpdate = $true; PingInterval = 30; WarpLicense = "" }
 
 $FirstRun = -not (Test-Path $ConfigPath)
 if (-not $FirstRun) {
@@ -1098,6 +1113,7 @@ function Start-SetupWizard {
     Write-Host (" " + (T 'wiz.step1')) -ForegroundColor White
     $Config.DnsFix = Read-Confirm (T 'wiz.dns') $true
     $Config.AutoUpdate = Read-Confirm (T 'wiz.upd') $true
+    $Config.PendingRuRouting = Read-Confirm (T 'wiz.route') $true
 
     Write-Screen (T 'wiz.profile.title') @((T 'wiz.profile.hint'))
     Write-Item "1" (T 'wiz.profile.rec') "Green"
@@ -1836,24 +1852,76 @@ function Show-PingSettings {
     }
 }
 
+# Installed Cloudflare WARP / Cloudflare One Client MSI product (null when it is not installed)
+function Get-WarpProduct {
+    $Roots = @("HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*", "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*")
+    try {
+        foreach ($Item in @(Get-ItemProperty -Path $Roots -ErrorAction SilentlyContinue)) {
+            if ($Item.DisplayName -match "^Cloudflare (WARP|One)" -and $Item.DisplayName -notmatch "cloudflared") {
+                $Guid = $null
+                if ($Item.PSChildName -match "^\{[0-9A-Fa-f-]{36}\}$") { $Guid = $Item.PSChildName }
+                elseif ($Item.UninstallString -match "(\{[0-9A-Fa-f-]{36}\})") { $Guid = $Matches[1] }
+                if ($Guid) { return [PSCustomObject]@{ Name = $Item.DisplayName; Guid = $Guid } }
+            }
+        }
+    } catch {}
+    return $null
+}
+
+function Remove-WarpClient ($Product) {
+    if (Test-Path $WarpCli) {
+        & $WarpCli --accept-tos disconnect 2>&1 | Out-Null
+        & $WarpCli --accept-tos registration delete 2>&1 | Out-Null
+        & $WarpCli --accept-tos tunnel host reset 2>&1 | Out-Null
+        & $WarpCli --accept-tos tunnel ip reset 2>&1 | Out-Null
+    }
+    Stop-WarpGui
+    $Label = T 'wait.uninstall'
+    $Sw = [Diagnostics.Stopwatch]::StartNew()
+    $Msi = Start-Process msiexec.exe -ArgumentList "/x $($Product.Guid) /qn /norestart" -PassThru -WindowStyle Hidden
+    $Tick = 0
+    while (-not $Msi.HasExited -and $Sw.Elapsed.TotalMinutes -lt 3) {
+        if ($Tick % 4 -eq 0) { Stop-WarpGui }
+        Show-Busy $Label $Tick $Sw.Elapsed.TotalSeconds
+        Start-Sleep -Milliseconds 250
+        $Tick++
+    }
+    $Ok = $false
+    if ($Msi.HasExited) { $Msi.WaitForExit(); $Ok = ($Msi.ExitCode -eq 0 -or $Msi.ExitCode -eq 3010 -or $Msi.ExitCode -eq 1605) }
+    Complete-Busy $Label $Ok $Sw.Elapsed.TotalSeconds
+    if ($Ok) { Write-Ok (T 'un.warp.done') } else { Write-Fail (T 'un.warp.fail') }
+}
+
 function Uninstall-WarpBypass {
     Write-Screen (T 'un.title') @() "Red"
+    
+    $Product = Get-WarpProduct
+    $RemoveClient = $false
+    if ($Product) {
+        Write-Host ""
+        $RemoveClient = Read-Confirm (T 'un.warp.ask') $true
+        Write-Host ""
+    }
     
     Write-Step (T 'un.stop')
     try { Stop-Winws } catch {}
     try { Stop-WinDivert } catch {}
     Start-Sleep -Seconds 1
     
-    Write-Step (T 'un.restore')
-    if (Test-Path $WarpCli) {
-        & $WarpCli --accept-tos disconnect *> $null
-        & $WarpCli --accept-tos mode warp *> $null
-        & $WarpCli --accept-tos tunnel host reset *> $null
-        & $WarpCli --accept-tos tunnel ip reset *> $null
+    if ($RemoveClient) {
+        Remove-WarpClient $Product
+    } else {
+        Write-Step (T 'un.restore')
+        if (Test-Path $WarpCli) {
+            & $WarpCli --accept-tos disconnect *> $null
+            & $WarpCli --accept-tos mode warp *> $null
+            & $WarpCli --accept-tos tunnel host reset *> $null
+            & $WarpCli --accept-tos tunnel ip reset *> $null
+        }
+        try {
+            Set-Service -Name "CloudflareWARP" -StartupType Automatic -ErrorAction SilentlyContinue | Out-Null
+        } catch {}
     }
-    try {
-        Set-Service -Name "CloudflareWARP" -StartupType Automatic -ErrorAction SilentlyContinue | Out-Null
-    } catch {}
     
     Write-Step (T 'un.registry')
     try {
@@ -2187,7 +2255,9 @@ function Measure-Latency {
 
 function Start-Winws ($BatFile) {
     try { Stop-Winws } catch {}
-    Write-Step (T 'winws.start')
+    $Label = T 'wait.winws'
+    $Sw = [Diagnostics.Stopwatch]::StartNew()
+    Show-Busy $Label 0 0
     $ArgsStr = Get-ZapretArgs $BatFile
     if ($null -ne $ArgsStr) {
         $Job = Start-Process -FilePath "$ZapretDir\bin\winws.exe" -ArgumentList $ArgsStr -WorkingDirectory "$ZapretDir\bin" -WindowStyle Hidden -PassThru
@@ -2195,14 +2265,21 @@ function Start-Winws ($BatFile) {
         $Job = Start-Process -FilePath $BatFile -WorkingDirectory (Split-Path $BatFile) -WindowStyle Hidden -PassThru
     }
     Add-WinwsToJob $Job
-    for ($i = 0; $i -lt 20; $i++) {
-        if (Get-Process -Name "winws" -ErrorAction SilentlyContinue) { break }
-        Start-Sleep -Milliseconds 500
+    # started = the process exists and stays alive for at least a second
+    $SeenAt = -1
+    for ($Tick = 0; $Tick -lt 44; $Tick++) {
+        if ($Tick % 2 -eq 0) {
+            $Alive = [bool](Get-Process -Name "winws" -ErrorAction SilentlyContinue)
+            if ($Alive -and $SeenAt -lt 0) { $SeenAt = $Tick }
+            if (-not $Alive) { $SeenAt = -1 }
+            if ($Alive -and ($Tick - $SeenAt) -ge 4) { break }
+        }
+        Show-Busy $Label $Tick $Sw.Elapsed.TotalSeconds
+        Start-Sleep -Milliseconds 250
     }
-    Start-Sleep -Seconds 1
-    if (-not (Get-Process -Name "winws" -ErrorAction SilentlyContinue)) {
-        Write-Fail (T 'winws.fail')
-    }
+    $Started = [bool](Get-Process -Name "winws" -ErrorAction SilentlyContinue)
+    Complete-Busy $Label $Started $Sw.Elapsed.TotalSeconds
+    if (-not $Started) { Write-Fail (T 'winws.fail') }
 }
 
 function Wait-WarpConnected ($Seconds = 30) {
@@ -2562,6 +2639,17 @@ function Launch-Tunnel ($BatFile) {
         if (-not $Success) {
             Write-Fail (T 'conn.noresp')
             Wait-Enter; return $false
+        }
+        
+        if ($Config.PendingRuRouting) {
+            Write-Host ""
+            Write-Step (T 'wiz.route.applying')
+            Apply-RuBypassTemplate
+            $Applied = Get-SplitTunnelEntries
+            if (@($Applied.Hosts).Count + @($Applied.Ips).Count -gt 0) {
+                $Config.PendingRuRouting = $false
+                Save-Config
+            }
         }
         
         if ($Config.AutoPing -ne 0) {

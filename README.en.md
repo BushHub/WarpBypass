@@ -54,7 +54,7 @@ It is built for people who need Discord (voice channels and streams), video host
 
 1. **Run:** [download the latest WarpBypass.bat](https://github.com/BushHub/WarpBypass/releases/latest/download/WarpBypass.bat) and run it.
 2. **Administrator rights:** confirm the UAC prompt. The tool needs them to configure network interfaces, the registry and system services.
-3. **First run:** the wizard asks for the language, configures automatic updates and applies the recommended profile. After you pick a profile, the program starts it immediately without a delay.
+3. **First run:** the wizard asks for the language, configures automatic updates, offers the "Russia direct" routing and applies the recommended profile. Just press Enter to accept the recommended values. After you pick a profile, the program starts it immediately without a delay.
 4. **Choose a profile:** in the main menu enter the number of the profile (the recommended universal option is `general (ALT12)`).
 5. **Session controls:** on the active connection screen you can:
    - Pause the connection (`P`)
@@ -73,7 +73,7 @@ It is built for people who need Discord (voice channels and streams), video host
   * *Availability check* — response time of popular services on the session screen (once, periodic or off) and the host list.
   * *WARP statistics* — MTU, speed, packet loss, latency.
   * *Profile test* — automatic search for the best bypass profile for your ISP.
-* **System:** interface language, WARP+ license key (paste with Ctrl+V or the right mouse button; the IP line shows `[WARP+]` when the key is active), automatic updates, settings reset and uninstall.
+* **System:** interface language, WARP+ license key (paste with Ctrl+V or the right mouse button; the IP line shows `[WARP+]` when the key is active), automatic updates, settings reset and full uninstall (optionally together with the Cloudflare WARP client).
 
 ---
 
