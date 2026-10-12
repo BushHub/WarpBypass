@@ -189,29 +189,34 @@ bl.first=Загрузка списка (v{0})...
 bl.reload=Повторная загрузка списка (v{0})...
 bl.updated=Список обновлён до v{0}.
 bl.error=Ошибка загрузки: {0}
-ru.loading=Загрузка списка сайтов и IP...
-ru.fail.list=Не удалось загрузить список сайтов. Проверьте подключение к интернету.
+ru.loading=Загрузка списка доменов и IP...
+ru.fail.list=Не удалось загрузить список доменов. Проверьте подключение к интернету.
 ru.preparing=Подготовка правил...
 ru.adding=Добавление правил в WARP: {0} шт.
-ru.failed=Не удалось добавить правил: {0}
+ru.failed=Не удалось применить правил: {0}
 ru.reconnect=Переподключение туннеля для применения правил...
 ru.done=Правила «Россия напрямую» применены.
 ru.already=Правила уже применены, добавлять нечего.
 ru.progress=Применение: {0}% ({1}/{2})
+ru.retry=Повторная попытка для {0} правил...
+ru.nowarp=Клиент WARP не установлен. Правила можно применить после первого подключения.
+ru.daemon=Служба WARP не отвечает. Правила не применены.
+conn.slow=Подключение занимает больше времени. Модуль обхода оставлен включённым и отключится после подключения.
+conn.retry=Повторная попытка подключения...
 route.title=МАРШРУТИЗАЦИЯ: РОССИЯ НАПРЯМУЮ
 route.sub1=Российские сайты и IP-адреса открываются напрямую,
 route.sub2=без WARP, чтобы банки и Госуслуги работали как обычно.
 route.state=Состояние
-route.state.on=ВКЛ (сайтов: {0}, IP-диапазонов: {1})
+route.state.on=ВКЛ (доменов: {0}, IP-диапазонов: {1})
 route.list=Список правил
 route.list.ver=версия {0}
 route.list.none=не загружен
 route.i1=Включить (применить правила)
-route.i2=Обновить список сайтов и IP
+route.i2=Обновить список доменов и IP
 route.i3=Показать действующие правила
 route.i4=Выключить (удалить правила)
 route.rules.title=ДЕЙСТВУЮЩИЕ ПРАВИЛА
-route.sites=Сайты: {0}
+route.sites=Домены: {0}
 route.ips=IP-диапазоны: {0}
 route.more=... и ещё {0}
 route.confirm.off=Удалить все правила и направить весь трафик через WARP?
@@ -454,29 +459,34 @@ bl.first=Downloading the list (v{0})...
 bl.reload=Downloading the list again (v{0})...
 bl.updated=The list was updated to v{0}.
 bl.error=Download error: {0}
-ru.loading=Downloading the site and IP list...
-ru.fail.list=Could not download the site list. Check your internet connection.
+ru.loading=Downloading the domain and IP list...
+ru.fail.list=Could not download the domain list. Check your internet connection.
 ru.preparing=Preparing rules...
 ru.adding=Adding rules to WARP: {0}
-ru.failed=Rules that could not be added: {0}
+ru.failed=Rules that could not be applied: {0}
 ru.reconnect=Reconnecting the tunnel to apply the rules...
 ru.done="Russia direct" rules applied.
 ru.already=The rules are already applied, nothing to add.
 ru.progress=Applying: {0}% ({1}/{2})
+ru.retry=Retrying {0} rules...
+ru.nowarp=The WARP client is not installed. The rules can be applied after the first connection.
+ru.daemon=The WARP service is not responding. The rules were not applied.
+conn.slow=Connecting takes longer than usual. The bypass module was left running and will stop after the connection is up.
+conn.retry=Retrying the connection...
 route.title=ROUTING: RUSSIA DIRECT
 route.sub1=Russian sites and IP addresses open directly,
 route.sub2=bypassing WARP, so banks and gov services work as usual.
 route.state=Status
-route.state.on=ON (sites: {0}, IP ranges: {1})
+route.state.on=ON (domains: {0}, IP ranges: {1})
 route.list=Rule list
 route.list.ver=version {0}
 route.list.none=not downloaded
 route.i1=Enable (apply the rules)
-route.i2=Update the site and IP list
+route.i2=Update the domain and IP list
 route.i3=Show active rules
 route.i4=Disable (remove the rules)
 route.rules.title=ACTIVE RULES
-route.sites=Sites: {0}
+route.sites=Domains: {0}
 route.ips=IP ranges: {0}
 route.more=... and {0} more
 route.confirm.off=Remove all rules and send all traffic through WARP?
@@ -781,6 +791,7 @@ function Get-CachedWarpStatus {
     return $global:CachedWarpStatus
 }
 
+$global:WinwsPendingStop = $false
 $global:IpTask = $null
 $global:IpSource = 0
 $global:IpOk = $false
@@ -880,6 +891,7 @@ $ZapretDir = "$StorageDir\zapret"
 $ZapretZip = "$StorageDir\zapret.zip"
 $ZapretUrl = "https://github.com/Flowseal/zapret-discord-youtube/archive/refs/heads/main.zip"
 $WarpCli = "C:\Program Files\Cloudflare\Cloudflare WARP\warp-cli.exe"
+$WarpSettingsPath = "C:\ProgramData\Cloudflare\settings.json"
 
 $ConfigPath = "$StorageDir\config.json"
 $PingListPath = "$StorageDir\ping_list.txt"
@@ -1296,7 +1308,7 @@ function Invoke-ParallelWarpCli {
     
     $Cli = if (Test-Path $WarpCli) { $WarpCli } else { "warp-cli" }
     $Running = [System.Collections.Generic.List[object]]::new()
-    $Failures = [System.Collections.Generic.List[string]]::new()
+    $Failures = [System.Collections.Generic.List[object]]::new()
     $Total = $CmdArgs.Count
     $Next = 0
     $Done = 0
@@ -1311,7 +1323,7 @@ function Invoke-ParallelWarpCli {
                     $Msg = ""
                     if ($Item.Err.IsCompleted -and $Item.Err.Result) { $Msg = $Item.Err.Result.Trim() }
                     if (-not $Msg -and $Item.Out.IsCompleted -and $Item.Out.Result) { $Msg = $Item.Out.Result.Trim() }
-                    $Failures.Add("$($Item.Cmd) -> $Msg")
+                    $Failures.Add([PSCustomObject]@{ Cmd = $Item.Cmd; Msg = $Msg })
                 }
                 $Item.Proc.Dispose()
                 $Running.RemoveAt($i)
@@ -1333,7 +1345,7 @@ function Invoke-ParallelWarpCli {
                 [void]$p.Start()
                 $Running.Add([PSCustomObject]@{ Proc = $p; Cmd = $CmdArgs[$Next]; Out = $p.StandardOutput.ReadToEndAsync(); Err = $p.StandardError.ReadToEndAsync() })
             } catch {
-                $Failures.Add("$($CmdArgs[$Next]) -> $(T 'fail.start')")
+                $Failures.Add([PSCustomObject]@{ Cmd = $CmdArgs[$Next]; Msg = (T 'fail.start') })
                 $Done++
             }
             $Next++
@@ -1345,7 +1357,7 @@ function Invoke-ParallelWarpCli {
     }
     
     Write-Host ""
-    return ,$Failures.ToArray()
+    return $Failures.ToArray()
 }
 
 function Apply-RuBypassTemplate {
@@ -1394,65 +1406,88 @@ function Apply-RuBypassTemplate {
     }
     foreach ($d in $Covered) { $Domains.Remove($d) | Out-Null }
     
-    # Read existing exclusions to skip duplicates and avoid useless process spawns
+    if (-not (Test-Path $WarpCli)) {
+        Write-Fail (T 'ru.nowarp')
+        return
+    }
+    $DaemonState = & $WarpCli --accept-tos status 2>&1 | Out-String
+    if ($DaemonState -match "(?i)Unable to connect|not running|channel closed") {
+        Write-Fail (T 'ru.daemon')
+        return
+    }
+    
+    $Sent = $false
+    $Failures = @()
+    for ($Round = 1; $Round -le 3; $Round++) {
+        $Cmds = @(Get-MissingRuleCommands $Domains $IpRanges)
+        if ($Cmds.Count -eq 0) { break }
+        if ($Round -eq 1) {
+            Write-Step (T 'ru.adding' $Cmds.Count)
+        } else {
+            Write-Step (T 'ru.retry' $Cmds.Count)
+            Start-Sleep -Seconds 3
+        }
+        $Failures = @(Invoke-ParallelWarpCli -CmdArgs $Cmds -ThrottleLimit $(if ($Round -eq 1) { 30 } else { 4 }))
+        $Sent = $true
+        Start-Sleep -Seconds 1
+    }
+    
+    $Left = @(Get-MissingRuleCommands $Domains $IpRanges)
+    if (-not $Sent) {
+        Write-Ok (T 'ru.already')
+        return
+    }
+    
+    # In an active session the tunnel is rebuilt after the rules change: keep winws on until it is connected again
+    if ($global:ActivePreset -and -not $global:TunnelPaused) {
+        Write-Step (T 'ru.reconnect')
+        Restart-WarpConnection
+    }
+    $global:CachedWarpStatus = $null
+    
+    if ($Left.Count -gt 0) {
+        Write-Fail (T 'ru.failed' $Left.Count)
+        $Shown = if ($Failures.Count -gt 0) { @($Failures | Select-Object -First 5 | ForEach-Object { "$($_.Cmd) -> $($_.Msg)" }) } else { @($Left | Select-Object -First 5) }
+        foreach ($F in $Shown) { Write-Note $F "DarkGray" }
+        if ($Left.Count -gt 5) { Write-Note (T 'route.more' ($Left.Count - 5)) "DarkGray" }
+    } else {
+        Write-Ok (T 'ru.done')
+    }
+}
+
+# Commands for the rules that are not in the WARP settings yet
+function Get-MissingRuleCommands ($Domains, $IpRanges) {
     $ExistingHosts = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     $ExistingIps   = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-    $WarpSettingsFile = "C:\ProgramData\Cloudflare\settings.json"
     
-    if (Test-Path $WarpSettingsFile) {
+    if (Test-Path $WarpSettingsPath) {
         try {
-            $WarpSettings = Get-Content $WarpSettingsFile -Raw | ConvertFrom-Json
+            $WarpSettings = Get-Content $WarpSettingsPath -Raw | ConvertFrom-Json
             if ($WarpSettings.excluded_hosts) {
                 foreach ($e in $WarpSettings.excluded_hosts) {
                     $k = if ($e -is [Array]) { $e[0] } else { $e }
-                    $ExistingHosts.Add($k) | Out-Null
+                    [void]$ExistingHosts.Add($k)
                 }
             }
             if ($WarpSettings.excluded_ips) {
                 foreach ($e in $WarpSettings.excluded_ips) {
                     $k = if ($e -is [Array]) { $e[0] } else { $e }
-                    $ExistingIps.Add($k) | Out-Null
+                    [void]$ExistingIps.Add($k)
                 }
             }
         } catch {}
     }
     
     $Cmds = [System.Collections.Generic.List[string]]::new()
-    
     foreach ($dom in $Domains) {
-        if (-not $ExistingHosts.Contains($dom)) {
-            $Cmds.Add("tunnel host add $dom")
-        }
+        if (-not $ExistingHosts.Contains($dom)) { $Cmds.Add("tunnel host add $dom") }
     }
-    
     foreach ($ip in $IpRanges) {
         if (-not $ExistingIps.Contains($ip)) {
-            if ($ip.Contains('/')) {
-                $Cmds.Add("tunnel ip add-range $ip")
-            } else {
-                $Cmds.Add("tunnel ip add $ip")
-            }
+            if ($ip.Contains('/')) { $Cmds.Add("tunnel ip add-range $ip") } else { $Cmds.Add("tunnel ip add $ip") }
         }
     }
-    
-    if ($Cmds.Count -gt 0) {
-        Write-Step (T 'ru.adding' $Cmds.Count)
-        $Failures = @(Invoke-ParallelWarpCli -CmdArgs $Cmds.ToArray() -ThrottleLimit 30)
-        if ($Failures.Count -gt 0) {
-            Write-Fail (T 'ru.failed' $Failures.Count)
-            foreach ($F in ($Failures | Select-Object -First 5)) { Write-Note $F "DarkGray" }
-        }
-        $WasConnected = ((Get-WarpStatus) -eq "Connected")
-        
-        if ($WasConnected -and -not $global:TunnelPaused) {
-            Write-Step (T 'ru.reconnect')
-            Restart-WarpConnection
-        }
-        $global:CachedWarpStatus = $null
-        Write-Ok (T 'ru.done')
-    } else {
-        Write-Ok (T 'ru.already')
-    }
+    return $Cmds.ToArray()
 }
 
 function Get-SplitTunnelEntries {
@@ -1550,7 +1585,7 @@ function Show-SplitTunnelSettings {
                     & $WarpCli --accept-tos tunnel host reset | Out-Null
                     & $WarpCli --accept-tos tunnel ip reset | Out-Null
                     Write-Ok (T 'route.removed')
-                    if ((Get-CachedWarpStatus) -eq "Connected") {
+                    if ($global:ActivePreset -and -not $global:TunnelPaused) {
                         Write-Step (T 'ru.reconnect')
                         Restart-WarpConnection
                     }
@@ -1871,7 +1906,7 @@ function Show-SystemSettings {
                     Save-Config
                     if (Set-WarpLicense $Key) {
                         Write-Ok (T 'key.accepted')
-                        if ((Get-WarpStatus) -eq "Connected" -and -not $global:TunnelPaused) {
+                        if ($global:ActivePreset -and -not $global:TunnelPaused) {
                             Write-Step (T 'key.checking')
                             Restart-WarpConnection
                             Wait-ExternalIp 15
@@ -2125,17 +2160,58 @@ function Wait-WarpConnected ($Seconds = 30) {
     return $false
 }
 
-# Reconnect the tunnel: winws on -> reconnect -> winws off (winws is only needed while WARP is connecting)
+# Reconnect the tunnel: winws on -> reconnect -> winws off once connected (winws is only needed while WARP is connecting)
 function Restart-WarpConnection {
     $Preset = $global:ActivePreset
     if ($Preset) { Start-Winws $Preset }
     & $WarpCli --accept-tos disconnect | Out-Null
     Start-Sleep -Seconds 1
     & $WarpCli --accept-tos connect | Out-Null
-    $Ok = Wait-WarpConnected 30
-    if ($Preset) { try { Stop-Winws } catch {} }
+    $Ok = Wait-WarpConnected 60
+    if (-not $Ok) {
+        Write-Step (T 'conn.retry')
+        & $WarpCli --accept-tos disconnect | Out-Null
+        Start-Sleep -Seconds 2
+        & $WarpCli --accept-tos connect | Out-Null
+        $Ok = Wait-WarpConnected 45
+    }
+    if ($Preset) {
+        if ($Ok) {
+            try { Stop-Winws } catch {}
+            $global:WinwsPendingStop = $false
+        } else {
+            Write-Fail (T 'conn.slow')
+            $global:WinwsPendingStop = $true
+        }
+    }
     $global:CachedWarpStatus = $null
     if ($Ok) { Update-CachedExternalIp }
+}
+
+# Closes the Cloudflare WARP GUI (the installer and the client start it); the service and warp-cli stay untouched
+function Stop-WarpGui {
+    $ErrorActionPreference = "SilentlyContinue"
+    try {
+        Get-Process -ErrorAction SilentlyContinue | Where-Object {
+            $_.ProcessName -notmatch "^(warp-svc|warp-cli|warp-dex|warp-diag|cloudflared)$" -and (
+                $_.ProcessName -match "^(Cloudflare (WARP|One)|warp-taskbar)" -or
+                ($_.Path -and $_.Path -like "$env:ProgramFiles\Cloudflare\Cloudflare WARP\*")
+            )
+        } | Stop-Process -Force -ErrorAction SilentlyContinue
+    } catch {}
+}
+
+function Remove-WarpGuiAutostart {
+    try {
+        foreach ($Hive in @("HKLM", "HKCU")) {
+            $RegPath = "$Hive`:\Software\Microsoft\Windows\CurrentVersion\Run"
+            foreach ($KeyName in @("CloudflareWARP", "Cloudflare WARP")) {
+                if (Get-ItemProperty -Path $RegPath -Name $KeyName -ErrorAction SilentlyContinue) {
+                    Remove-ItemProperty -Path $RegPath -Name $KeyName -Force -ErrorAction SilentlyContinue *> $null
+                }
+            }
+        }
+    } catch {}
 }
 
 function Connect-WarpTunnel ($BatFile) {
@@ -2156,7 +2232,11 @@ function Connect-WarpTunnel ($BatFile) {
         try {
             Start-DownloadWithProgress -Uri "https://downloads.cloudflareclient.com/v1/download/windows/ga" -OutFile $WarpMsi -Label (T 'conn.dl.warp')
             Write-Step (T 'conn.install.warp') "Gray"
-            Start-Process msiexec.exe -ArgumentList "/i `"$WarpMsi`" /qn /norestart START_WPF_AS_USER=0" -Wait -NoNewWindow
+            $Msi = Start-Process msiexec.exe -ArgumentList "/i `"$WarpMsi`" /qn /norestart ONBOARDING=false START_WPF_AS_USER=0" -PassThru -WindowStyle Hidden
+            # the installer launches the WARP window: close it as soon as it appears, also right after the install ends
+            while (-not $Msi.HasExited) { Stop-WarpGui; Start-Sleep -Milliseconds 200 }
+            for ($i = 0; $i -lt 15; $i++) { Stop-WarpGui; Start-Sleep -Milliseconds 200 }
+            Remove-WarpGuiAutostart
             Remove-Item $WarpMsi -ErrorAction SilentlyContinue
             if (-not (Test-Path $WarpCli)) {
                 Write-Host ""
@@ -2182,7 +2262,7 @@ function Connect-WarpTunnel ($BatFile) {
     Stop-Service -Name "CloudflareWARP" -Force -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 1
     Start-Service -Name "CloudflareWARP" -ErrorAction SilentlyContinue
-    Stop-Process -Name "Cloudflare WARP" -Force -ErrorAction SilentlyContinue
+    Stop-WarpGui
     
     # Wait for daemon to be ready (up to 8 seconds)
     Write-Step (T 'conn.wait.daemon')
@@ -2211,8 +2291,13 @@ function Connect-WarpTunnel ($BatFile) {
     
     $Connected = Wait-WarpConnected 30
     
-    # winws is only needed to get WARP connected
-    try { Stop-Winws } catch {}
+    # winws is only needed to get WARP connected; if it is still connecting, the session loop stops winws later
+    if ($Connected) {
+        try { Stop-Winws } catch {}
+        $global:WinwsPendingStop = $false
+    } else {
+        $global:WinwsPendingStop = $true
+    }
     
     if ($Connected) { Update-CachedExternalIp }
     return $Connected
@@ -2308,6 +2393,10 @@ function Get-ActiveSessionInput ($BatFile, [ref]$TimeRemainingRef) {
             if (-not $global:TunnelPaused -and -not $global:IpOk -and -not $global:IpTask -and $global:IpAttempts -lt 6 -and ([DateTime]::Now - $global:LastIpAttempt).TotalSeconds -ge 5 -and (Get-CachedWarpStatus).Trim() -eq "Connected") {
                 $global:IpAttempts++
                 Start-IpLookup 0
+            }
+            if ($global:WinwsPendingStop -and (Get-CachedWarpStatus).Trim() -eq "Connected") {
+                try { Stop-Winws } catch {}
+                $global:WinwsPendingStop = $false
             }
             if ($Config.AutoPing -eq 2 -and -not $global:TunnelPaused) {
                 $TimeRemainingRef.Value--
@@ -2525,6 +2614,7 @@ function Launch-Tunnel ($BatFile) {
             }
         } catch {}
         $global:ActivePreset = $null
+        $global:WinwsPendingStop = $false
         if ($Watchdog) { Stop-Process -Id $Watchdog.Id -Force -ErrorAction SilentlyContinue }
         Write-Ok (T 'sess.closed')
         Start-Sleep -Seconds 1
