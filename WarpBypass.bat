@@ -74,6 +74,17 @@ function Get-CachedWarpStatus {
     return $global:CachedWarpStatus
 }
 
+function Update-CachedExternalIp {
+    $global:CurrentExternalIp = "не определён"
+    try {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        $IPInfo = Invoke-RestMethod -Uri "https://ipinfo.io/json" -UseBasicParsing -TimeoutSec 3
+        if ($IPInfo -and $IPInfo.ip) {
+            $global:CurrentExternalIp = if ($IPInfo.country) { "$($IPInfo.ip) ($($IPInfo.country))" } else { "$($IPInfo.ip)" }
+        }
+    } catch {}
+}
+
 $StorageDir = "$env:LOCALAPPDATA\WarpBypass"
 if (-not (Test-Path $StorageDir)) { New-Item -ItemType Directory -Path $StorageDir -Force -ErrorAction SilentlyContinue *> $null }
 
@@ -87,7 +98,7 @@ $PingListPath = "$StorageDir\ping_list.txt"
 
 Clear-Host
 
-$DefaultConfig = @{ AutoPreset = $false; LastPreset = ""; AutoPresetTimeout = 3; AutoPing = 1; DnsFix = $false; IgnoredVersion = "0.0"; AutoUpdate = $true; AutoKillConflicts = $false; PingInterval = 30 }
+$DefaultConfig = @{ AutoPreset = $false; LastPreset = ""; AutoPresetTimeout = 3; AutoPing = 1; DnsFix = $false; IgnoredVersion = "0.0"; AutoUpdate = $true; AutoKillConflicts = $false; PingInterval = 30; WarpLicense = "" }
 
 $FirstRun = -not (Test-Path $ConfigPath)
 if (-not $FirstRun) {
@@ -128,6 +139,12 @@ if (-not (Test-Path $PingListPath)) {
 function Wait-Enter {
     Write-Host " Нажмите Enter для продолжения..." -ForegroundColor Gray
     Read-Host | Out-Null
+}
+
+function Set-WarpLicense ($Key) {
+    if (-not $Key -or -not (Test-Path $WarpCli)) { return $false }
+    & $WarpCli --accept-tos registration license $Key 2>&1 | Out-Null
+    return ($LASTEXITCODE -eq 0)
 }
 
 function Save-Config { $Config | ConvertTo-Json | Set-Content $ConfigPath }
@@ -1010,6 +1027,7 @@ function Show-CommonSettings {
         Write-Host " [2] Принудительный сброс DNS-кэша : " -NoNewline; if ($Config.DnsFix) { Write-Host "АКТИВНО" -ForegroundColor Green } else { Write-Host "ОТКЛЮЧЕНО" -ForegroundColor Red }
         Write-Host " [3] Авто-синхронизация обновлений : " -NoNewline; if ($Config.AutoUpdate) { Write-Host "АКТИВНО" -ForegroundColor Green } else { Write-Host "ОТКЛЮЧЕНО" -ForegroundColor Red }
         Write-Host " [4] Задержка автозапуска профиля  : " -NoNewline; if ($Config.AutoPresetTimeout -eq 0) { Write-Host "0 сек (Мгновенный старт)" -ForegroundColor Cyan } else { Write-Host "$($Config.AutoPresetTimeout) сек" -ForegroundColor Green }
+        Write-Host " [5] Лицензионный ключ WARP+       : " -NoNewline; if ($Config.WarpLicense) { Write-Host "ЗАДАН" -ForegroundColor Green } else { Write-Host "НЕ ЗАДАН" -ForegroundColor Red }
         Write-Host "=========================================================" -ForegroundColor DarkGray
         Write-Host " [U] Стереть утилиту WarpBypass из системы" -ForegroundColor Red
         Write-Host " [D] Восстановить настройки по умолчанию" -ForegroundColor Red
@@ -1033,6 +1051,27 @@ function Show-CommonSettings {
                     Write-Host "Некорректное значение задержки." -ForegroundColor Red
                     Start-Sleep -Seconds 1
                 }
+            }
+            "5" {
+                $Sec = Read-Host "Ключ WARP+ (xxxxxxxx-xxxxxxxx-xxxxxxxx, пусто - удалить)" -AsSecureString
+                $Bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($Sec)
+                try { $Key = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($Bstr).Trim() } finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($Bstr) }
+                if ($Key -eq "") {
+                    $Config.WarpLicense = ""
+                    Save-Config
+                    Write-Host "Ключ удалён из настроек. Уже применённый ключ действует до перерегистрации." -ForegroundColor Yellow
+                } elseif ($Key -notmatch "^[A-Za-z0-9]{8}-[A-Za-z0-9]{8}-[A-Za-z0-9]{8}$") {
+                    Write-Host "Некорректный формат ключа." -ForegroundColor Red
+                } else {
+                    $Config.WarpLicense = $Key
+                    Save-Config
+                    if (Set-WarpLicense $Key) {
+                        Write-Host "Ключ сохранён и применён." -ForegroundColor Green
+                    } else {
+                        Write-Host "Ключ сохранён, но сейчас не применён. Он будет использован при следующей регистрации." -ForegroundColor Yellow
+                    }
+                }
+                Start-Sleep -Seconds 2
             }
             "u" {
                 $Confirm = Read-Host "ВНИМАНИЕ: Все файлы конфигурации и зависимости программы будут безвозвратно удалены. Продолжить? (Y/N)"
@@ -1197,7 +1236,7 @@ function Show-Settings {
                 $Confirm = Read-Host "ВНИМАНИЕ: Сбросить абсолютно ВСЕ настройки к заводским? (Y/N)"
                 if ($Confirm.Trim().ToLower() -match "^[yд]") {
                     foreach ($Key in $DefaultConfig.Keys) {
-                        $Config.$Key = $DefaultConfig[$Key]
+                        if ($Key -ne "WarpLicense") { $Config.$Key = $DefaultConfig[$Key] }
                     }
                     Save-Config
                     if (Test-Path $WarpCli) {
@@ -1354,6 +1393,10 @@ function Connect-WarpTunnel ($BatFile) {
     if (-not $RegCheck -or $RegCheck -match "(?i)error|not registered|No registration") {
         Write-Host "-> Регистрация клиентского профиля в сети Cloudflare..." -ForegroundColor Yellow
         & $WarpCli --accept-tos registration new 2>$null | Out-Null
+        if ($Config.WarpLicense) {
+            Write-Host "-> Применение лицензионного ключа WARP+..." -ForegroundColor Yellow
+            Set-WarpLicense $Config.WarpLicense | Out-Null
+        }
     }
     & $WarpCli --accept-tos connect | Out-Null
     
@@ -1366,6 +1409,7 @@ function Connect-WarpTunnel ($BatFile) {
         $Timeout--
     }
     
+    if ($Connected) { Update-CachedExternalIp }
     return $Connected
 }
 
@@ -1389,6 +1433,14 @@ function Show-ActiveSessionMenu ($CurrentInput, $TimerVal) {
             "Paused"        { Write-Host "ПАУЗА                     " -ForegroundColor Yellow }
             default         { Write-Host "$($WarpState.PadRight(25))" -ForegroundColor Red }
         }
+    }
+    
+    Write-Host " Внешний IP-адрес       : " -NoNewline -ForegroundColor White
+    if ($global:TunnelPaused -or $WarpState.Trim() -ne "Connected") {
+        Write-Host "-".PadRight(31) -ForegroundColor Gray
+    } else {
+        $DisplayIp = if ($global:CurrentExternalIp) { $global:CurrentExternalIp } else { "не определён" }
+        Write-Host $DisplayIp.PadRight(31) -ForegroundColor Gray
     }
     
     if (-not $global:TunnelPaused -and $global:PingResults -and $global:PingResults.Count -gt 0) {
@@ -1429,6 +1481,7 @@ function Show-ActiveSessionMenu ($CurrentInput, $TimerVal) {
         Write-Host " [P]  Приостановить работу (Пауза)                       " -ForegroundColor Yellow
     }
     Write-Host " [C]  Переподключить туннель                             " -ForegroundColor Cyan
+    Write-Host " [I]  Сменить IP-адрес (перерегистрация)                 " -ForegroundColor Cyan
     Write-Host " [M]  Сменить стратегию (Главное меню)                   " -ForegroundColor White
     Write-Host " [S]  Настройки                                          " -ForegroundColor Yellow
     Write-Host " [Q]  Отключить туннель и выйти                          " -ForegroundColor Red
@@ -1465,6 +1518,7 @@ function Get-ActiveSessionInput ($BatFile, [ref]$TimeRemainingRef) {
                 $FinalInput = $InputStr.Trim().ToLower()
                 if ($FinalInput -eq "") {
                     $global:CachedWarpStatus = $null
+                    if ((Get-CachedWarpStatus).Trim() -eq "Connected" -and -not $global:TunnelPaused) { Update-CachedExternalIp }
                     if ($Config.AutoPing -ne 0 -and -not $global:TunnelPaused) {
                         Show-ActiveSessionMenu $InputStr "измерение..."
                         Measure-Latency
@@ -1586,6 +1640,54 @@ function Launch-Tunnel ($BatFile) {
                     }
                 } else {
                     Write-Host "❌ Ошибка переподключения туннеля." -ForegroundColor Red
+                    Start-Sleep -Seconds 2
+                }
+                $TimeRemaining = $Config.PingInterval
+                Clear-Host
+                Show-ActiveSessionMenu "" $TimeRemaining
+            }
+            elseif ($CleanInput -eq 'i') {
+                Write-Host "`nКлиент WARP будет перерегистрирован, адрес может измениться. Продолжить? (Y/N)" -ForegroundColor Yellow
+                $Ans = [console]::ReadKey($true).KeyChar.ToString().ToLower()
+                if ($Ans -match "[yд]") {
+                    $OldIp = $global:CurrentExternalIp
+                    $RestoreSplit = $false
+                    $SettingsFile = "C:\ProgramData\Cloudflare\settings.json"
+                    if (Test-Path $SettingsFile) {
+                        try {
+                            $Cur = Get-Content $SettingsFile -Raw -Encoding UTF8 | ConvertFrom-Json
+                            if (($Cur.excluded_hosts -and @($Cur.excluded_hosts).Count -gt 0) -or ($Cur.excluded_ips -and @($Cur.excluded_ips).Count -gt 0)) { $RestoreSplit = $true }
+                        } catch {}
+                    }
+                    Write-Host "-> Перерегистрация клиента..." -ForegroundColor Yellow
+                    & $WarpCli --accept-tos disconnect | Out-Null
+                    & $WarpCli --accept-tos registration delete 2>$null | Out-Null
+                    & $WarpCli --accept-tos registration new 2>$null | Out-Null
+                    if ($LASTEXITCODE -ne 0) {
+                        Start-Sleep -Seconds 2
+                        & $WarpCli --accept-tos registration new 2>$null | Out-Null
+                    }
+                    if ($LASTEXITCODE -ne 0) {
+                        Write-Host "Не удалось зарегистрировать клиента (возможен лимит запросов Cloudflare). Попробуйте позже." -ForegroundColor Red
+                    } elseif ($Config.WarpLicense) {
+                        Set-WarpLicense $Config.WarpLicense | Out-Null
+                    }
+                    $Res = Connect-WarpTunnel $BatFile
+                    if ($Res) {
+                        $global:TunnelPaused = $false
+                        if ($RestoreSplit) {
+                            Write-Host "-> Восстановление маршрутизации Split Tunneling..." -ForegroundColor Yellow
+                            Apply-RuBypassTemplate
+                            Update-CachedExternalIp
+                        }
+                        if ($Config.AutoPing -ne 0) {
+                            Write-Host "-> Обновление пинга (ожидайте)..." -ForegroundColor Yellow
+                            Measure-Latency
+                        }
+                        Write-Host "IP: $OldIp -> $($global:CurrentExternalIp)" -ForegroundColor Green
+                    } else {
+                        Write-Host "Ошибка подключения после перерегистрации." -ForegroundColor Red
+                    }
                     Start-Sleep -Seconds 2
                 }
                 $TimeRemaining = $Config.PingInterval
