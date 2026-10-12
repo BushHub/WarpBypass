@@ -158,6 +158,7 @@ wiz.profile.title=ПРОФИЛЬ ОБХОДА
 wiz.profile.hint=Шаг 2 из 2. Разным провайдерам подходят разные профили.
 wiz.profile.rec=Рекомендуемый профиль (general ALT12)
 wiz.profile.later=Выбрать позже в главном меню
+wiz.profile.prompt=Выберите пункт [1-2, Enter = 1]
 wiz.done=Первичная настройка завершена.
 wiz.saved=Настройки сохранены в {0}
 upd.checking=Проверка обновлений WarpBypass...
@@ -203,6 +204,12 @@ ru.nowarp=Клиент WARP не установлен. Правила можно
 ru.daemon=Служба WARP не отвечает. Правила не применены.
 conn.slow=Подключение занимает больше времени. Модуль обхода оставлен включённым и отключится после подключения.
 conn.retry=Повторная попытка подключения...
+wait.install=Установка Cloudflare WARP
+wait.daemon=Ожидание службы WARP
+wait.connect=Подключение WARP
+wait.ip=Определение IP-адреса
+wait.done=готово
+wait.timeout=время ожидания истекло
 route.title=МАРШРУТИЗАЦИЯ: РОССИЯ НАПРЯМУЮ
 route.sub1=Российские сайты и IP-адреса открываются напрямую,
 route.sub2=без WARP, чтобы банки и Госуслуги работали как обычно.
@@ -340,7 +347,6 @@ winws.start=Запуск модуля обхода (winws)...
 winws.fail=Модуль winws не запустился (возможен конфликт WinDivert или антивирус).
 conn.flushdns=Очистка кэша DNS...
 conn.dl.warp=Загрузка Cloudflare WARP
-conn.install.warp=Установка Cloudflare WARP...
 conn.warp.missing=Установка завершена, но warp-cli.exe не найден.
 conn.warp.installed=Cloudflare WARP установлен.
 conn.warp.failed=Не удалось загрузить или установить Cloudflare WARP.
@@ -428,6 +434,7 @@ wiz.profile.title=BYPASS PROFILE
 wiz.profile.hint=Step 2 of 2. Different ISPs need different profiles.
 wiz.profile.rec=Recommended profile (general ALT12)
 wiz.profile.later=Choose later in the main menu
+wiz.profile.prompt=Select an option [1-2, Enter = 1]
 wiz.done=Initial setup complete.
 wiz.saved=Settings saved to {0}
 upd.checking=Checking for WarpBypass updates...
@@ -473,6 +480,12 @@ ru.nowarp=The WARP client is not installed. The rules can be applied after the f
 ru.daemon=The WARP service is not responding. The rules were not applied.
 conn.slow=Connecting takes longer than usual. The bypass module was left running and will stop after the connection is up.
 conn.retry=Retrying the connection...
+wait.install=Installing Cloudflare WARP
+wait.daemon=Waiting for the WARP service
+wait.connect=Connecting WARP
+wait.ip=Detecting the IP address
+wait.done=done
+wait.timeout=timed out
 route.title=ROUTING: RUSSIA DIRECT
 route.sub1=Russian sites and IP addresses open directly,
 route.sub2=bypassing WARP, so banks and gov services work as usual.
@@ -610,7 +623,6 @@ winws.start=Starting the bypass module (winws)...
 winws.fail=The winws module did not start (possible WinDivert conflict or antivirus).
 conn.flushdns=Flushing the DNS cache...
 conn.dl.warp=Downloading Cloudflare WARP
-conn.install.warp=Installing Cloudflare WARP...
 conn.warp.missing=Installation finished, but warp-cli.exe was not found.
 conn.warp.installed=Cloudflare WARP installed.
 conn.warp.failed=Could not download or install Cloudflare WARP.
@@ -688,7 +700,7 @@ function T {
     $S = $global:Str[$Key]
     if ($null -eq $S) { $S = $global:StrRu[$Key] }
     if ($null -eq $S) { return $Key }
-    if ($A -and @($A).Count -gt 0) { return ($S -f @($A)) }
+    if ($null -ne $A -and @($A).Count -gt 0) { return ($S -f @($A)) }
     return $S
 }
 
@@ -737,6 +749,23 @@ function Write-Ok ([string]$Text) { Write-Host (" [OK] " + $Text) -ForegroundCol
 function Write-Fail ([string]$Text) { Write-Host (" [!] " + $Text) -ForegroundColor Red }
 function Write-Note ([string]$Text, $Color = "Gray") { Write-Host ("      " + $Text) -ForegroundColor $Color }
 
+# Indeterminate progress line (same style as the download bar) for operations of unknown length
+function Show-Busy ([string]$Label, [int]$Tick, [double]$Elapsed) {
+    $Width = 20; $Block = 6; $Span = $Width - $Block
+    $Pos = $Tick % (2 * $Span)
+    if ($Pos -gt $Span) { $Pos = 2 * $Span - $Pos }
+    $Bar = ("░" * $Pos) + ("█" * $Block) + ("░" * ($Span - $Pos))
+    Write-Host ("`r -> " + $Label + ": [" + $Bar + "] " + (T 'sec' ([int]$Elapsed)) + "     ") -NoNewline -ForegroundColor Cyan
+}
+
+function Complete-Busy ([string]$Label, [bool]$Ok, [double]$Elapsed) {
+    if ($Ok) {
+        Write-Host ("`r -> " + $Label + ": [" + ("█" * 20) + "] " + (T 'sec' ([int]$Elapsed)) + ", " + (T 'wait.done') + "     ") -ForegroundColor Green
+    } else {
+        Write-Host ("`r -> " + $Label + ": [" + ("░" * 20) + "] " + (T 'wait.timeout') + "     ") -ForegroundColor Yellow
+    }
+}
+
 function Read-Choice {
     $Answer = Read-Host (" " + (T 'prompt.choose'))
     Set-ConsoleQuickEdit $false
@@ -744,7 +773,8 @@ function Read-Choice {
 }
 
 function Read-Confirm ([string]$Text, [bool]$Default = $false) {
-    $Answer = (Read-Host (" " + $Text + " [" + (T 'yn') + "]")).Trim()
+    $Hint = if ($Default) { "Y/n" } else { "y/N" }
+    $Answer = (Read-Host (" " + $Text + " [" + $Hint + "]")).Trim()
     Set-ConsoleQuickEdit $false
     if ($Answer -eq "") { return $Default }
     return ($Answer -match "^[YyДд]")
@@ -880,13 +910,16 @@ function Receive-IpLookup {
 
 # Blocking helper for one-off flows (waits until the address is known or the time is up)
 function Wait-ExternalIp ($Seconds = 20) {
-    $End = [DateTime]::Now.AddSeconds($Seconds)
-    while ([DateTime]::Now -lt $End) {
+    $Label = T 'wait.ip'
+    $Sw = [Diagnostics.Stopwatch]::StartNew()
+    for ($Tick = 0; $Tick -lt ($Seconds * 4); $Tick++) {
         [void](Receive-IpLookup)
-        if ($global:IpOk) { return }
+        if ($global:IpOk) { Complete-Busy $Label $true $Sw.Elapsed.TotalSeconds; return }
         if (-not $global:IpTask -and ([DateTime]::Now - $global:LastIpAttempt).TotalSeconds -ge 2) { Start-IpLookup 0 }
-        Start-Sleep -Milliseconds 200
+        Show-Busy $Label $Tick $Sw.Elapsed.TotalSeconds
+        Start-Sleep -Milliseconds 250
     }
+    Complete-Busy $Label $false $Sw.Elapsed.TotalSeconds
 }
 
 $StorageDir = "$env:LOCALAPPDATA\WarpBypass"
@@ -1070,8 +1103,12 @@ function Start-SetupWizard {
     Write-Item "1" (T 'wiz.profile.rec') "Green"
     Write-Item "2" (T 'wiz.profile.later') "Gray"
     Write-Rule
-    $Choice = ""
-    while ($Choice -notmatch "^[12]$") { $Choice = Read-Choice }
+    $Choice = "x"
+    while ($Choice -notmatch "^[12]$") {
+        $Choice = (Read-Host (" " + (T 'wiz.profile.prompt'))).Trim()
+        if ($Choice -eq "") { $Choice = "1" }
+    }
+    Set-ConsoleQuickEdit $false
     if ($Choice -eq "1") {
         $Config.LastPreset = "$ZapretDir\general (ALT12).bat"
         $Config.AutoPreset = $true
@@ -1186,6 +1223,10 @@ function Check-Updates {
     }
     
     if ($NeedUpdate) {
+        # fresh install: remember which commit was downloaded so the next check does not download it again
+        if (-not $global:LatestSHA) {
+            try { $global:LatestSHA = (Invoke-RestMethod -Uri $RepoAPI -UseBasicParsing -UserAgent "WarpBypass" -TimeoutSec 5 -ErrorAction Stop).sha } catch {}
+        }
         # Make sure no running winws is locking files
         try { Stop-Winws } catch {}
         Start-Sleep -Milliseconds 500
@@ -2165,22 +2206,40 @@ function Start-Winws ($BatFile) {
 }
 
 function Wait-WarpConnected ($Seconds = 30) {
-    while ($Seconds -gt 0) {
-        $WarpStatus = & $WarpCli --accept-tos status 2>&1 | Out-String
-        if ($WarpStatus -and $WarpStatus.Contains("Connected") -and -not $WarpStatus.Contains("Connecting")) { return $true }
-        Start-Sleep -Seconds 1
-        $Seconds--
+    $Label = T 'wait.connect'
+    $Sw = [Diagnostics.Stopwatch]::StartNew()
+    for ($Tick = 0; $Tick -lt ($Seconds * 4); $Tick++) {
+        if ($Tick % 4 -eq 0) {
+            $WarpStatus = & $WarpCli --accept-tos status 2>&1 | Out-String
+            if ($WarpStatus -and $WarpStatus.Contains("Connected") -and -not $WarpStatus.Contains("Connecting")) {
+                Complete-Busy $Label $true $Sw.Elapsed.TotalSeconds
+                return $true
+            }
+        }
+        Show-Busy $Label $Tick $Sw.Elapsed.TotalSeconds
+        Start-Sleep -Milliseconds 250
     }
+    Complete-Busy $Label $false $Sw.Elapsed.TotalSeconds
     return $false
 }
 
 # The WARP service is briefly unavailable after many settings changes ("IPC responder dropped")
 function Wait-WarpDaemon ($Seconds = 30) {
-    for ($i = 0; $i -lt $Seconds; $i++) {
-        $St = & $WarpCli --accept-tos status 2>&1 | Out-String
-        if ($St -and $St -notmatch "(?i)Unable to connect|IPC|channel closed|responder dropped|not running") { return $true }
-        Start-Sleep -Seconds 1
+    $Label = T 'wait.daemon'
+    $Sw = [Diagnostics.Stopwatch]::StartNew()
+    for ($Tick = 0; $Tick -lt ($Seconds * 4); $Tick++) {
+        if ($Tick % 4 -eq 0) {
+            $St = & $WarpCli --accept-tos status 2>&1 | Out-String
+            if ($St -and $St -notmatch "(?i)Unable to connect|IPC|channel closed|responder dropped|not running") {
+                # nothing to wait for: do not leave a progress line behind
+                if ($Tick -gt 0) { Complete-Busy $Label $true $Sw.Elapsed.TotalSeconds }
+                return $true
+            }
+        }
+        if ($Tick -gt 0) { Show-Busy $Label $Tick $Sw.Elapsed.TotalSeconds }
+        Start-Sleep -Milliseconds 250
     }
+    Complete-Busy $Label $false $Sw.Elapsed.TotalSeconds
     return $false
 }
 
@@ -2218,12 +2277,9 @@ function Restart-WarpConnection {
 function Stop-WarpGui {
     $ErrorActionPreference = "SilentlyContinue"
     try {
-        Get-Process -ErrorAction SilentlyContinue | Where-Object {
-            $_.ProcessName -notmatch "^(warp-svc|warp-cli|warp-dex|warp-diag|cloudflared)$" -and (
-                $_.ProcessName -match "^(Cloudflare (WARP|One)|warp-taskbar)" -or
-                ($_.Path -and $_.Path -like "$env:ProgramFiles\Cloudflare\Cloudflare WARP\*")
-            )
-        } | Stop-Process -Force -ErrorAction SilentlyContinue
+        Get-Process -Name "Cloudflare*", "warp-taskbar" -ErrorAction SilentlyContinue |
+            Where-Object { $_.ProcessName -notmatch "^(cloudflared|warp-svc|warp-cli|warp-dex|warp-diag)$" } |
+            Stop-Process -Force -ErrorAction SilentlyContinue
     } catch {}
 }
 
@@ -2257,21 +2313,27 @@ function Connect-WarpTunnel ($BatFile) {
         $WarpMsi = "$StorageDir\Cloudflare_WARP.msi"
         try {
             Start-DownloadWithProgress -Uri "https://downloads.cloudflareclient.com/v1/download/windows/ga" -OutFile $WarpMsi -Label (T 'conn.dl.warp')
-            Write-Step (T 'conn.install.warp') "Gray"
             Set-ConsoleQuickEdit $false
             $Msi = Start-Process msiexec.exe -ArgumentList "/i `"$WarpMsi`" /qn /norestart ONBOARDING=false START_WPF_AS_USER=0" -PassThru -WindowStyle Hidden
             # the installer launches the WARP window: close it as soon as it appears, also right after the install ends
-            $Deadline = [DateTime]::Now.AddMinutes(5)
+            $Label = T 'wait.install'
+            $Sw = [Diagnostics.Stopwatch]::StartNew()
             $Tick = 0
-            while (-not $Msi.HasExited -and [DateTime]::Now -lt $Deadline) {
-                Stop-WarpGui
-                Start-Sleep -Milliseconds 200
+            while (-not $Msi.HasExited -and $Sw.Elapsed.TotalMinutes -lt 5) {
+                if ($Tick % 4 -eq 0) { Stop-WarpGui }
+                Show-Busy $Label $Tick $Sw.Elapsed.TotalSeconds
+                Start-Sleep -Milliseconds 250
                 $Tick++
-                if ($Tick % 10 -eq 0) { Write-Host "." -NoNewline -ForegroundColor Gray }
             }
-            if (-not $Msi.HasExited) { try { $Msi.Kill() } catch {} }
-            Write-Host ""
-            for ($i = 0; $i -lt 15; $i++) { Stop-WarpGui; Start-Sleep -Milliseconds 200 }
+            $InstallOk = $Msi.HasExited
+            if (-not $InstallOk) { try { $Msi.Kill() } catch {} }
+            for ($i = 0; $i -lt 12; $i++) {
+                Stop-WarpGui
+                Show-Busy $Label $Tick $Sw.Elapsed.TotalSeconds
+                Start-Sleep -Milliseconds 250
+                $Tick++
+            }
+            Complete-Busy $Label $InstallOk $Sw.Elapsed.TotalSeconds
             Remove-WarpGuiAutostart
             Remove-Item $WarpMsi -ErrorAction SilentlyContinue
             if (-not (Test-Path $WarpCli)) {
@@ -2664,17 +2726,19 @@ function Launch-Tunnel ($BatFile) {
 Clear-Host
 Write-Header
 
+$ZapretChecked = $false
 if ($FirstRun) {
     Start-SetupWizard
     if (-not (Test-Path $ZapretDir)) {
         $IsOnline = $true
         Check-Updates
+        $ZapretChecked = $true
     }
 }
 
 if ($Config.AutoUpdate) {
     Check-AppUpdate
-    Check-Updates
+    if (-not $ZapretChecked) { Check-Updates }
 }
 
 if ($Config.AutoPreset -and $Config.LastPreset -and (Test-Path $Config.LastPreset)) {
