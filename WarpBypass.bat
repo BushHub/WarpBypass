@@ -294,6 +294,14 @@ try {
     $res = $p.Send("8.8.8.8", 1500)
     if ($res.Status -eq "Success") { $IsOnline = $true }
 } catch { }
+if (-not $IsOnline) {
+    # ICMP is often blocked: fall back to a TCP connect
+    try {
+        $Tcp = New-Object System.Net.Sockets.TcpClient
+        if ($Tcp.ConnectAsync("api.github.com", 443).Wait(2500)) { $IsOnline = $true }
+        $Tcp.Close()
+    } catch { }
+}
 
 function Check-AppUpdate {
     if (-not $IsOnline) { return }
@@ -371,7 +379,7 @@ function Check-Updates {
         return
     }
     
-    $WinwsPath = if (Test-Path $ZapretDir) { (Get-ChildItem -Path $ZapretDir -Filter winws.exe -Recurse | Select-Object -First 1).FullName } else { "" }
+    $WinwsPath = if (Test-Path "$ZapretDir\bin\winws.exe") { "$ZapretDir\bin\winws.exe" } else { "" }
     $RepoAPI = "https://api.github.com/repos/Flowseal/zapret-discord-youtube/commits/main"
     $VersionFile = "$StorageDir\zapret_version.txt"
     $LastCheckFile = "$StorageDir\last_check.txt"
@@ -1577,6 +1585,7 @@ function Launch-Tunnel ($BatFile) {
     $Config.LastPreset = $BatFile
     Save-Config
     $global:ActivePreset = $BatFile
+    $Watchdog = $null
     
     $global:TunnelPaused = $false
     $TimeRemaining = $Config.PingInterval
@@ -1597,7 +1606,7 @@ function Launch-Tunnel ($BatFile) {
         }
         
         $MyPID = $PID
-        Start-Process powershell -ArgumentList @('-NoProfile', '-WindowStyle', 'Hidden', '-Command', "while (Get-Process -Id $MyPID -ErrorAction SilentlyContinue) { Start-Sleep 1 }; Stop-Process -Name winws -Force -ErrorAction SilentlyContinue; & '$WarpCli' --accept-tos disconnect") -WindowStyle Hidden
+        $Watchdog = Start-Process powershell -PassThru -ArgumentList @('-NoProfile', '-WindowStyle', 'Hidden', '-Command', "while (Get-Process -Id $MyPID -ErrorAction SilentlyContinue) { Start-Sleep 1 }; Stop-Process -Name winws -Force -ErrorAction SilentlyContinue; & '$WarpCli' --accept-tos disconnect") -WindowStyle Hidden
         
         # Initial draw of the menu
         Clear-Host
@@ -1739,6 +1748,7 @@ function Launch-Tunnel ($BatFile) {
             Stop-Process -Name "winws" -Force -ErrorAction SilentlyContinue *> $null
         } catch {}
         $global:ActivePreset = $null
+        if ($Watchdog) { Stop-Process -Id $Watchdog.Id -Force -ErrorAction SilentlyContinue }
         Write-Host "-> Сеанс завершен успешно." -ForegroundColor Green
         Start-Sleep -Seconds 1
     }
