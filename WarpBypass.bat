@@ -113,6 +113,21 @@ function Stop-Winws {
     & taskkill.exe /F /T /IM winws.exe *> $null
 }
 
+function Stop-WinDivert {
+    $Names = @("WinDivert", "WinDivert14")
+    foreach ($Name in $Names) { & sc.exe stop $Name *> $null }
+    for ($i = 0; $i -lt 20; $i++) {
+        $Busy = $false
+        foreach ($Name in $Names) {
+            $Q = & sc.exe query $Name 2>$null | Out-String
+            if ($Q -match "RUNNING|STOP_PENDING") { $Busy = $true }
+        }
+        if (-not $Busy) { break }
+        Start-Sleep -Milliseconds 250
+    }
+    foreach ($Name in $Names) { & sc.exe delete $Name *> $null }
+}
+
 function Get-WarpStatus {
     if (Test-Path $WarpCli) {
         $Status = & $WarpCli --accept-tos status 2>$null | Out-String
@@ -178,7 +193,7 @@ function Receive-IpLookup {
             $Ip = $Matches[1]
             $Loc = if ($Text -match "(?m)^loc=(\S+)") { $Matches[1] } else { "" }
             $Warp = if ($Text -match "(?m)^warp=(\w+)") { $Matches[1] } else { "" }
-            $Tag = if ($Warp -eq "on" -or $Warp -eq "plus") { " [WARP]" } elseif ($Warp -eq "off") { " [напрямую]" } else { "" }
+            $Tag = if ($Warp -eq "plus") { " [WARP+]" } elseif ($Warp -eq "on") { " [WARP]" } elseif ($Warp -eq "off") { " [напрямую]" } else { "" }
             $Shown = if ($Loc) { "$Ip ($Loc)$Tag" } else { "$Ip$Tag" }
             if ($Ip -notmatch ":") {
                 $global:CurrentExternalIp = $Shown
@@ -555,6 +570,7 @@ function Check-Updates {
             if (-not $ExtractedDir -or -not (Test-Path "$($ExtractedDir.FullName)\bin\winws.exe")) {
                 throw "Архив не содержит ожидаемых файлов."
             }
+            try { Stop-WinDivert } catch {}
             if (Test-Path $ZapretDir) { Remove-Item $ZapretDir -Recurse -Force -ErrorAction Stop }
             New-Item -ItemType Directory -Path $ZapretDir -Force | Out-Null
             Copy-Item -Path "$($ExtractedDir.FullName)\*" -Destination $ZapretDir -Recurse -Force
@@ -562,7 +578,7 @@ function Check-Updates {
             $global:ZapretEnvBlock = $null
         } catch {
             Write-Host "-> Не удалось обновить компоненты Zapret: $($_.Exception.Message)" -ForegroundColor Red
-            if (-not (Test-Path "$ZapretDir\bin\winws.exe")) { Write-Host "   Компоненты отсутствуют, проверьте подключение к GitHub." -ForegroundColor Red }
+            if (-not (Test-Path "$ZapretDir\bin\winws.exe")) { Write-Host "   Компоненты Zapret не установлены, запуск профилей невозможен." -ForegroundColor Red }
             Start-Sleep -Seconds 2
         } finally {
             Remove-Item $ZapretZip -ErrorAction SilentlyContinue
@@ -620,20 +636,20 @@ function Update-BypassLists {
     param([switch]$Force, [switch]$Silent)
     if (-not (Test-Path $BypassCacheDir)) { New-Item -ItemType Directory -Path $BypassCacheDir -Force | Out-Null }
     
-    if (-not $Silent) { Write-Host "-> Проверка версии правил разделения трафика..." -ForegroundColor Yellow }
+    if (-not $Silent) { Write-Host "-> Проверка обновлений списка..." -ForegroundColor Yellow }
     $LocalVer  = Get-LocalBypassVersion
     $RemoteVer = Get-RemoteBypassVersion
     
     if ($null -eq $RemoteVer) {
         if (-not $Silent) {
-            Write-Host "  Ошибка подключения к серверу обновлений." -ForegroundColor Red
-            Write-Host "  Используется локальная версия." -ForegroundColor DarkGray
+            Write-Host "  Не удалось связаться с сервером обновлений." -ForegroundColor Red
+            Write-Host "  Используется сохранённый список." -ForegroundColor DarkGray
         }
         return $false
     }
     
     if (-not $Force -and $LocalVer -eq $RemoteVer) {
-        if (-not $Silent) { Write-Host "  Версия актуальна: v$RemoteVer" -ForegroundColor Green }
+        if (-not $Silent) { Write-Host "  Список актуален (v$RemoteVer)." -ForegroundColor Green }
         return $false
     }
     
@@ -641,9 +657,9 @@ function Update-BypassLists {
         if ($LocalVer -and $LocalVer -ne $RemoteVer) {
             Write-Host "  Обновление: v$LocalVer -> v$RemoteVer" -ForegroundColor Cyan
         } elseif (-not $LocalVer) {
-            Write-Host "  Первая загрузка списков (v$RemoteVer)..." -ForegroundColor Cyan
+            Write-Host "  Загрузка списка (v$RemoteVer)..." -ForegroundColor Cyan
         } else {
-            Write-Host "  Принудительная перезагрузка (v$RemoteVer)..." -ForegroundColor Yellow
+            Write-Host "  Повторная загрузка списка (v$RemoteVer)..." -ForegroundColor Yellow
         }
     }
     
@@ -652,7 +668,7 @@ function Update-BypassLists {
         Invoke-WebRequest -Uri "$BypassListBaseUrl/ru_bypass_domain.txt" -OutFile "$BypassCacheDir\ru_bypass_domain.txt" -UseBasicParsing
         Invoke-WebRequest -Uri "$BypassListBaseUrl/ru_bypass_ip.txt"     -OutFile "$BypassCacheDir\ru_bypass_ip.txt"     -UseBasicParsing
         Set-Content -Path "$BypassCacheDir\ru_bypass_version.txt" -Value $RemoteVer -Encoding UTF8
-        if (-not $Silent) { Write-Host "  Списки обновлены до v$RemoteVer!" -ForegroundColor Green }
+        if (-not $Silent) { Write-Host "  Список обновлён до v$RemoteVer." -ForegroundColor Green }
         return $true
     } catch {
         if (-not $Silent) { Write-Host "  Ошибка загрузки: $_" -ForegroundColor Red }
@@ -726,16 +742,16 @@ function Apply-RuBypassTemplate {
     
     # Ensure lists exist, download if needed
     if (-not (Test-Path $DomainFile) -or -not (Test-Path $IpFile)) {
-        Write-Host "-> Файлы списков не найдены, загрузка из репозитория..." -ForegroundColor Yellow
+        Write-Host "-> Загрузка списка сайтов и IP..." -ForegroundColor Yellow
         Update-BypassLists | Out-Null
     }
     
     if (-not (Test-Path $DomainFile)) {
-        Write-Host "❌ Не удалось получить список доменов. Проверьте подключение." -ForegroundColor Red
+        Write-Host "❌ Не удалось загрузить список сайтов. Проверьте подключение к интернету." -ForegroundColor Red
         return
     }
     
-    Write-Host "-> Парсинг и фильтрация списков обхода..." -ForegroundColor Yellow
+    Write-Host "-> Подготовка правил..." -ForegroundColor Yellow
     
     $Domains  = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     $IpRanges = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
@@ -808,128 +824,129 @@ function Apply-RuBypassTemplate {
     }
     
     if ($Cmds.Count -gt 0) {
-        Write-Host "-> Добавление новых исключений в WARP ($($Cmds.Count) команд)..." -ForegroundColor Yellow
+        Write-Host "-> Добавление правил в WARP: $($Cmds.Count) шт...." -ForegroundColor Yellow
         $Failures = @(Invoke-ParallelWarpCli -CmdArgs $Cmds.ToArray() -ThrottleLimit 30)
         if ($Failures.Count -gt 0) {
-            Write-Host "-> Не применено команд: $($Failures.Count)" -ForegroundColor Red
+            Write-Host "-> Не удалось добавить правил: $($Failures.Count)" -ForegroundColor Red
             foreach ($F in ($Failures | Select-Object -First 5)) { Write-Host "   $F" -ForegroundColor DarkGray }
         }
         $WasConnected = ((Get-WarpStatus) -eq "Connected")
         
         if ($WasConnected -and -not $global:TunnelPaused) {
-            Write-Host "-> Применение завершено. Переподключение туннеля WARP..." -ForegroundColor Yellow
+            Write-Host "-> Переподключение туннеля WARP для применения правил..." -ForegroundColor Yellow
             Restart-WarpConnection
         }
         $global:CachedWarpStatus = $null
-        Write-Host "✅ Шаблон успешно применен!" -ForegroundColor Green
+        Write-Host "✅ Правила «Россия напрямую» применены." -ForegroundColor Green
     } else {
-        Write-Host "✅ Все домены и IP-диапазоны уже есть в списке исключений WARP!" -ForegroundColor Green
+        Write-Host "✅ Правила уже применены, добавлять нечего." -ForegroundColor Green
     }
+}
+
+function Get-SplitTunnelEntries {
+    $Result = [PSCustomObject]@{ Hosts = @(); Ips = @() }
+    $File = "C:\ProgramData\Cloudflare\settings.json"
+    if (-not (Test-Path $File)) { return $Result }
+    try {
+        $Settings = Get-Content $File -Raw -Encoding UTF8 | ConvertFrom-Json
+        $SystemIps = [System.Collections.Generic.HashSet[string]]::new([string[]]@(
+            "10.0.0.0/8", "100.64.0.0/10", "169.254.0.0/16", "172.16.0.0/12",
+            "192.0.0.0/24", "192.168.0.0/16", "224.0.0.0/24", "240.0.0.0/4",
+            "239.255.255.250/32", "255.255.255.255/32", "fe80::/10",
+            "fd00::/8", "ff01::/16", "ff02::/16", "ff03::/16", "ff04::/16",
+            "ff05::/16", "fc00::/7", "2620:149:a44::/48", "2403:300:a42::/48",
+            "2403:300:a51::/48", "2a01:b740:a42::/48"
+        ), [System.StringComparer]::OrdinalIgnoreCase)
+        $Hosts = @()
+        if ($Settings.excluded_hosts) {
+            foreach ($entry in $Settings.excluded_hosts) {
+                $v = if ($entry -is [Array]) { $entry[0] } else { $entry }
+                if ($v) { $Hosts += $v }
+            }
+        }
+        $Ips = @()
+        if ($Settings.excluded_ips) {
+            foreach ($entry in $Settings.excluded_ips) {
+                $v = if ($entry -is [Array]) { $entry[0] } else { $entry }
+                if ($v -and -not $SystemIps.Contains($v)) { $Ips += $v }
+            }
+        }
+        $Result.Hosts = $Hosts
+        $Result.Ips = $Ips
+    } catch {}
+    return $Result
 }
 
 function Show-SplitTunnelSettings {
     while ($true) {
         $LocalVer = Get-LocalBypassVersion
-        $VerStr   = if ($LocalVer) { " [список v$LocalVer]" } else { " [список не загружен]" }
+        $Entries  = Get-SplitTunnelEntries
+        $HostCount = @($Entries.Hosts).Count
+        $IpCount   = @($Entries.Ips).Count
         
         Clear-Host
         Write-Header
-        Write-Host "            УПРАВЛЕНИЕ МАРШРУТИЗАЦИЕЙ (SPLIT TUNNEL)" -ForegroundColor Cyan
+        Write-Host "               МАРШРУТИЗАЦИЯ: РОССИЯ НАПРЯМУЮ" -ForegroundColor Cyan
         Write-Host "=========================================================" -ForegroundColor DarkGray
-        Write-Host " [1] Применить шаблон RU-direct (Российские домены+ip в обход WARP)$VerStr" -ForegroundColor Green
-        Write-Host " [2] Проверить наличие обновлений шаблона" -ForegroundColor Yellow
-        Write-Host " [3] Просмотреть текущие настройки Split Tunneling" -ForegroundColor White
-        Write-Host " [4] Сброс настроек Split Tunneling" -ForegroundColor Red
+        Write-Host " Российские сайты и IP-адреса идут напрямую, без WARP:" -ForegroundColor Gray
+        Write-Host " банки, Госуслуги и другие сервисы работают как обычно." -ForegroundColor Gray
+        Write-Host "=========================================================" -ForegroundColor DarkGray
+        Write-Host " Состояние : " -NoNewline -ForegroundColor White
+        if ($HostCount + $IpCount -gt 0) {
+            Write-Host "ВКЛЮЧЕНО (сайтов: $HostCount, IP-диапазонов: $IpCount)" -ForegroundColor Green
+        } else {
+            Write-Host "ВЫКЛЮЧЕНО" -ForegroundColor Red
+        }
+        Write-Host " Список    : " -NoNewline -ForegroundColor White
+        if ($LocalVer) { Write-Host "версия $LocalVer" -ForegroundColor Gray } else { Write-Host "не загружен" -ForegroundColor DarkGray }
+        Write-Host "=========================================================" -ForegroundColor DarkGray
+        Write-Host " [1] Включить (применить правила)" -ForegroundColor Green
+        Write-Host " [2] Обновить список сайтов и IP" -ForegroundColor Yellow
+        Write-Host " [3] Показать действующие правила" -ForegroundColor White
+        Write-Host " [4] Выключить (удалить все правила)" -ForegroundColor Red
         Write-Host " [0] Назад" -ForegroundColor Gray
         Write-Host "=========================================================" -ForegroundColor DarkGray
         
         $sel = Read-Host "Выберите вариант"
-        switch ($sel) {
+        switch ($sel.Trim()) {
             "1" {
                 Apply-RuBypassTemplate
-                Read-Host "Нажмите Enter для возврата..."
+                Read-Host "Нажмите Enter для возврата..." | Out-Null
             }
             "2" {
                 Write-Host ""
-                Update-BypassLists -Force
-                Read-Host "Нажмите Enter для возврата..."
+                Update-BypassLists -Force | Out-Null
+                Read-Host "Нажмите Enter для возврата..." | Out-Null
             }
             "3" {
                 Clear-Host
                 Write-Header
-                Write-Host "           ТЕКУЩИЕ НАСТРОЙКИ SPLIT TUNNELING" -ForegroundColor Cyan
+                Write-Host "                 ДЕЙСТВУЮЩИЕ ПРАВИЛА" -ForegroundColor Cyan
                 Write-Host "=========================================================" -ForegroundColor DarkGray
-                $WarpSettingsFile = "C:\ProgramData\Cloudflare\settings.json"
-                if (Test-Path $WarpSettingsFile) {
-                    try {
-                        $WarpSettings = Get-Content $WarpSettingsFile -Raw -Encoding UTF8 | ConvertFrom-Json
-                        
-                        # 1. Parse and extract custom hosts (all hosts are custom)
-                        $CustomHosts = @()
-                        if ($WarpSettings.excluded_hosts) {
-                            foreach ($entry in $WarpSettings.excluded_hosts) {
-                                $hostVal = if ($entry -is [Array]) { $entry[0] } else { $entry }
-                                if ($hostVal) { $CustomHosts += $hostVal }
-                            }
-                        }
-                        
-                        # 2. Parse and extract custom IPs (filter out known WARP system defaults)
-                        $SystemIps = [System.Collections.Generic.HashSet[string]]::new([string[]]@(
-                            "10.0.0.0/8", "100.64.0.0/10", "169.254.0.0/16", "172.16.0.0/12",
-                            "192.0.0.0/24", "192.168.0.0/16", "224.0.0.0/24", "240.0.0.0/4",
-                            "239.255.255.250/32", "255.255.255.255/32", "fe80::/10",
-                            "fd00::/8", "ff01::/16", "ff02::/16", "ff03::/16", "ff04::/16",
-                            "ff05::/16", "fc00::/7", "2620:149:a44::/48", "2403:300:a42::/48",
-                            "2403:300:a51::/48", "2a01:b740:a42::/48"
-                        ), [System.StringComparer]::OrdinalIgnoreCase)
-                        
-                        $CustomIps = @()
-                        if ($WarpSettings.excluded_ips) {
-                            foreach ($entry in $WarpSettings.excluded_ips) {
-                                $ipVal = if ($entry -is [Array]) { $entry[0] } else { $entry }
-                                if ($ipVal -and -not $SystemIps.Contains($ipVal)) {
-                                    $CustomIps += $ipVal
-                                }
-                            }
-                        }
-                        
-                        # 3. Clean Display (first 15 entries + summary)
-                        Write-Host "--- Домены: $($CustomHosts.Count) ---" -ForegroundColor Yellow
-                        if ($CustomHosts.Count -gt 0) {
-                            $CustomHosts | Select-Object -First 15 | ForEach-Object { Write-Host "  $_" -ForegroundColor Green }
-                            if ($CustomHosts.Count -gt 15) {
-                                Write-Host "  ... и ещё $($CustomHosts.Count - 15) доменов" -ForegroundColor DarkGray
-                            }
-                        } else {
-                            Write-Host "  (пусто)" -ForegroundColor DarkGray
-                        }
-                        
-                        Write-Host "`n--- IP-адреса: $($CustomIps.Count) ---" -ForegroundColor Yellow
-                        if ($CustomIps.Count -gt 0) {
-                            $CustomIps | Select-Object -First 15 | ForEach-Object { Write-Host "  $_" -ForegroundColor Cyan }
-                            if ($CustomIps.Count -gt 15) {
-                                Write-Host "  ... и ещё $($CustomIps.Count - 15) IP-диапазонов" -ForegroundColor DarkGray
-                            }
-                        } else {
-                            Write-Host "  (пусто)" -ForegroundColor DarkGray
-                        }
-                        
-                    } catch {
-                        Write-Host "❌ Сбой обработки конфигурационного файла настроек Cloudflare WARP." -ForegroundColor Red
-                    }
+                Write-Host "--- Сайты: $HostCount ---" -ForegroundColor Yellow
+                if ($HostCount -gt 0) {
+                    $Entries.Hosts | Select-Object -First 15 | ForEach-Object { Write-Host "  $_" -ForegroundColor Green }
+                    if ($HostCount -gt 15) { Write-Host "  ... и ещё $($HostCount - 15)" -ForegroundColor DarkGray }
                 } else {
-                    Write-Host "Файл настроек WARP не найден." -ForegroundColor Red
+                    Write-Host "  (нет)" -ForegroundColor DarkGray
+                }
+                Write-Host "`n--- IP-диапазоны: $IpCount ---" -ForegroundColor Yellow
+                if ($IpCount -gt 0) {
+                    $Entries.Ips | Select-Object -First 15 | ForEach-Object { Write-Host "  $_" -ForegroundColor Cyan }
+                    if ($IpCount -gt 15) { Write-Host "  ... и ещё $($IpCount - 15)" -ForegroundColor DarkGray }
+                } else {
+                    Write-Host "  (нет)" -ForegroundColor DarkGray
                 }
                 Write-Host "=========================================================" -ForegroundColor DarkGray
                 Read-Host "Нажмите Enter для возврата..." | Out-Null
             }
             "4" {
-                $Confirm = Read-Host "Очистить список исключений и вернуть туннелирование по умолчанию? (Y/N)"
+                $Confirm = Read-Host "Удалить все правила и пускать весь трафик через WARP? (Y/N)"
                 if ($Confirm -match "^[YyДд]") {
-                    Write-Host "-> Сброс исключений..." -ForegroundColor Yellow
+                    Write-Host "-> Удаление правил..." -ForegroundColor Yellow
                     & $WarpCli --accept-tos tunnel host reset | Out-Null
                     & $WarpCli --accept-tos tunnel ip reset | Out-Null
-                    Write-Host "Все кастомные исключения сброшены." -ForegroundColor Green
+                    Write-Host "Правила удалены." -ForegroundColor Green
                     if ((Get-CachedWarpStatus) -eq "Connected") {
                         Write-Host "-> Переподключение туннеля WARP..." -ForegroundColor Yellow
                         Restart-WarpConnection
@@ -1154,6 +1171,7 @@ function Uninstall-WarpBypass {
     
     Write-Host "-> Завершение фоновых модулей маскировки трафика..." -ForegroundColor Yellow
     try { Stop-Winws } catch {}
+    try { Stop-WinDivert } catch {}
     Start-Sleep -Seconds 1
     
 
@@ -1188,7 +1206,7 @@ function Uninstall-WarpBypass {
         '-WindowStyle'
         'Hidden'
         '-Command'
-        "while (Get-Process -Id $MyPID -ErrorAction SilentlyContinue) { Start-Sleep 1 }; Remove-Item -Path '$($StorageDir.Replace("'","''"))' -Recurse -Force -ErrorAction SilentlyContinue"
+        "while (Get-Process -Id $MyPID -ErrorAction SilentlyContinue) { Start-Sleep 1 }; for (`$i = 0; `$i -lt 15 -and (Test-Path -LiteralPath '$($StorageDir.Replace("'","''"))'); `$i++) { Remove-Item -LiteralPath '$($StorageDir.Replace("'","''"))' -Recurse -Force -ErrorAction SilentlyContinue; Start-Sleep 1 }"
     )
     Start-Process powershell -ArgumentList $CmdArgs -WindowStyle Hidden
     
@@ -1250,12 +1268,25 @@ function Show-CommonSettings {
                     $Config.WarpLicense = $Key
                     Save-Config
                     if (Set-WarpLicense $Key) {
-                        Write-Host "Ключ сохранён и применён." -ForegroundColor Green
+                        Write-Host "Ключ принят клиентом WARP." -ForegroundColor Green
+                        if ((Get-WarpStatus) -eq "Connected" -and -not $global:TunnelPaused) {
+                            Write-Host "-> Переподключение для проверки ключа..." -ForegroundColor Yellow
+                            Restart-WarpConnection
+                            Wait-ExternalIp 15
+                            if ($global:CurrentExternalIp -match "WARP\+") {
+                                Write-Host "WARP+ активен." -ForegroundColor Green
+                            } else {
+                                Write-Host "Ключ принят, но WARP+ не активен (аккаунт Free): ключ недействителен или исчерпан лимит устройств." -ForegroundColor Yellow
+                            }
+                        } else {
+                            Write-Host "Проверить ключ можно после подключения: в строке IP-адреса появится [WARP+]." -ForegroundColor Gray
+                        }
                     } else {
-                        Write-Host "Ключ сохранён, но сейчас не применён. Он будет использован при следующей регистрации." -ForegroundColor Yellow
+                        Write-Host "Клиент WARP не принял ключ (неверный, уже использован или исчерпан лимит устройств)." -ForegroundColor Red
+                        Write-Host "Ключ сохранён и будет повторно применён при следующей регистрации." -ForegroundColor Gray
                     }
                 }
-                Start-Sleep -Seconds 2
+                Start-Sleep -Seconds 4
             }
             "u" {
                 $Confirm = Read-Host "ВНИМАНИЕ: Все файлы конфигурации и зависимости программы будут безвозвратно удалены. Продолжить? (Y/N)"
@@ -1964,10 +1995,10 @@ if ($Config.AutoPreset -and $Config.LastPreset -and (Test-Path $Config.LastPrese
                 break 
             }
         }
-        if (-not $Interrupted) { $ExitProg = Launch-Tunnel $Config.LastPreset; if ($ExitProg) { Exit } }
+        if (-not $Interrupted) { $ExitProg = @(Launch-Tunnel $Config.LastPreset)[-1]; if ($ExitProg -eq $true) { Exit } }
     } else {
-        $ExitProg = Launch-Tunnel $Config.LastPreset
-        if ($ExitProg) { Exit }
+        $ExitProg = @(Launch-Tunnel $Config.LastPreset)[-1]
+        if ($ExitProg -eq $true) { Exit }
     }
 }
 
@@ -1999,8 +2030,8 @@ while ($true) {
     else {
         $choice = 0
         if ([int]::TryParse($Cmd, [ref]$choice) -and $choice -ge 1 -and $choice -le $BatFiles.Count) {
-            $ExitProg = Launch-Tunnel $BatFiles[$choice - 1].FullName
-            if ($ExitProg) { Exit }
+            $ExitProg = @(Launch-Tunnel $BatFiles[$choice - 1].FullName)[-1]
+            if ($ExitProg -eq $true) { Exit }
         }
     }
 }
