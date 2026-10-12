@@ -5,7 +5,7 @@ cd /d "%~dp0"
 set "WARP_BAT_PATH=%~f0"
 fltmc >nul 2>&1
 if %errorLevel% neq 0 (
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "$q=[string][char]39; $c='$env:WARP_BAT_PATH='+$q+$env:WARP_BAT_PATH.Replace($q,$q+$q)+$q+'; Invoke-Command -ScriptBlock ([ScriptBlock]::Create((Get-Content -LiteralPath $env:WARP_BAT_PATH -Encoding UTF8 -Raw)))'; $e=[Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($c)); Start-Process powershell -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-EncodedCommand',$e"
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "$q=[string][char]39; $c='$env:WARP_BAT_PATH='+$q+$env:WARP_BAT_PATH.Replace($q,$q+$q)+$q+'; Invoke-Command -ScriptBlock ([ScriptBlock]::Create((Get-Content -LiteralPath $env:WARP_BAT_PATH -Encoding UTF8 -Raw)))'; $e=[Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($c)); $a='title WarpBypass by BUSH && powershell -NoProfile -ExecutionPolicy Bypass -EncodedCommand '+$e; Start-Process cmd.exe -Verb RunAs -ArgumentList '/c',$a"
     exit /b
 )
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-Command -ScriptBlock ([ScriptBlock]::Create((Get-Content -LiteralPath $env:WARP_BAT_PATH -Encoding UTF8 -Raw)))"
@@ -201,6 +201,7 @@ ru.preparing=Подготовка правил...
 ru.adding=Добавление правил в WARP: {0} шт.
 ru.failed=Не удалось применить правил: {0}
 ru.reconnect=Переподключение туннеля для применения правил...
+ru.reconnect.note=Служба WARP перезагружает правила маршрутизации, это занимает до минуты. Так и должно быть, подождите.
 ru.done=Правила «Россия напрямую» применены.
 ru.already=Правила уже применены, добавлять нечего.
 ru.progress=Применение: {0}% ({1}/{2})
@@ -483,6 +484,7 @@ ru.preparing=Preparing rules...
 ru.adding=Adding rules to WARP: {0}
 ru.failed=Rules that could not be applied: {0}
 ru.reconnect=Reconnecting the tunnel to apply the rules...
+ru.reconnect.note=The WARP service is reloading the routing rules, this takes up to a minute. This is expected, please wait.
 ru.done="Russia direct" rules applied.
 ru.already=The rules are already applied, nothing to add.
 ru.progress=Applying: {0}% ({1}/{2})
@@ -1512,6 +1514,7 @@ function Apply-RuBypassTemplate {
     # In an active session the tunnel is rebuilt after the rules change: keep winws on until it is connected again
     if ($global:ActivePreset -and -not $global:TunnelPaused) {
         Write-Step (T 'ru.reconnect')
+        Write-Note (T 'ru.reconnect.note') "DarkGray"
         Restart-WarpConnection
     }
     $global:CachedWarpStatus = $null
@@ -1658,6 +1661,7 @@ function Show-SplitTunnelSettings {
                     Write-Ok (T 'route.removed')
                     if ($global:ActivePreset -and -not $global:TunnelPaused) {
                         Write-Step (T 'ru.reconnect')
+                        Write-Note (T 'ru.reconnect.note') "DarkGray"
                         Restart-WarpConnection
                     }
                     Start-Sleep -Seconds 2
