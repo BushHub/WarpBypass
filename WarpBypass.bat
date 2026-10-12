@@ -132,15 +132,85 @@ function Get-CachedWarpStatus {
     return $global:CachedWarpStatus
 }
 
-function Update-CachedExternalIp {
-    $global:CurrentExternalIp = "не определён"
+$global:IpTask = $null
+$global:IpSource = 0
+$global:IpOk = $false
+$global:IpAttempts = 0
+$global:LastIpAttempt = [DateTime]::MinValue
+$global:CurrentExternalIp = ""
+
+function Start-IpLookup ($Source = 0) {
+    $global:IpSource = $Source
+    $global:LastIpAttempt = [DateTime]::Now
     try {
+        if (-not ("System.Net.Http.HttpClient" -as [type])) { Add-Type -AssemblyName System.Net.Http }
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-        $IPInfo = Invoke-RestMethod -Uri "https://ipinfo.io/json" -UseBasicParsing -TimeoutSec 3
-        if ($IPInfo -and $IPInfo.ip) {
-            $global:CurrentExternalIp = if ($IPInfo.country) { "$($IPInfo.ip) ($($IPInfo.country))" } else { "$($IPInfo.ip)" }
+        if (-not $global:IpHttp) {
+            $global:IpHttp = New-Object System.Net.Http.HttpClient
+            $global:IpHttp.Timeout = [TimeSpan]::FromSeconds(4)
         }
-    } catch {}
+        $Url = if ($Source -eq 0) { "https://www.cloudflare.com/cdn-cgi/trace" } else { "https://ipinfo.io/json" }
+        $global:IpTask = $global:IpHttp.GetStringAsync($Url)
+    } catch {
+        $global:IpTask = $null
+    }
+}
+
+# Non-blocking: starts a fresh lookup; the result is picked up by Receive-IpLookup
+function Update-CachedExternalIp {
+    $global:IpOk = $false
+    $global:IpAttempts = 0
+    $global:CurrentExternalIp = "определение..."
+    Start-IpLookup 0
+}
+
+# Returns $true when the displayed value changed
+function Receive-IpLookup {
+    if (-not $global:IpTask -or -not $global:IpTask.IsCompleted) { return $false }
+    $Task = $global:IpTask
+    $global:IpTask = $null
+    $Text = $null
+    try { if (-not $Task.IsFaulted -and -not $Task.IsCanceled) { $Text = $Task.Result } } catch {}
+    
+    if ($Text) {
+        if ($global:IpSource -eq 0 -and $Text -match "(?m)^ip=(\S+)") {
+            $Ip = $Matches[1]
+            $Loc = if ($Text -match "(?m)^loc=(\S+)") { $Matches[1] } else { "" }
+            $Warp = if ($Text -match "(?m)^warp=(\w+)") { $Matches[1] } else { "" }
+            $Tag = if ($Warp -eq "on" -or $Warp -eq "plus") { " [WARP]" } elseif ($Warp -eq "off") { " [напрямую]" } else { "" }
+            $global:CurrentExternalIp = if ($Loc) { "$Ip ($Loc)$Tag" } else { "$Ip$Tag" }
+            $global:IpOk = $true
+            return $true
+        }
+        if ($global:IpSource -eq 1) {
+            try {
+                $Info = $Text | ConvertFrom-Json
+                if ($Info.ip) {
+                    $global:CurrentExternalIp = if ($Info.country) { "$($Info.ip) ($($Info.country))" } else { "$($Info.ip)" }
+                    $global:IpOk = $true
+                    return $true
+                }
+            } catch {}
+        }
+    }
+    
+    if ($global:IpSource -eq 0) {
+        Start-IpLookup 1
+        return $false
+    }
+    $global:CurrentExternalIp = "не определён"
+    return $true
+}
+
+# Blocking helper for one-off flows (waits until the address is known or the time is up)
+function Wait-ExternalIp ($Seconds = 20) {
+    $End = [DateTime]::Now.AddSeconds($Seconds)
+    while ([DateTime]::Now -lt $End) {
+        [void](Receive-IpLookup)
+        if ($global:IpOk) { return }
+        if (-not $global:IpTask -and ([DateTime]::Now - $global:LastIpAttempt).TotalSeconds -ge 2) { Start-IpLookup 0 }
+        Start-Sleep -Milliseconds 200
+    }
 }
 
 $StorageDir = "$env:LOCALAPPDATA\WarpBypass"
@@ -586,17 +656,25 @@ function Invoke-ParallelWarpCli {
     )
     
     $Cli = if (Test-Path $WarpCli) { $WarpCli } else { "warp-cli" }
-    $Running = [System.Collections.Generic.List[System.Diagnostics.Process]]::new()
+    $Running = [System.Collections.Generic.List[object]]::new()
+    $Failures = [System.Collections.Generic.List[string]]::new()
     $Total = $CmdArgs.Count
     $Next = 0
     $Done = 0
-    $Failed = 0
     
     while ($Next -lt $Total -or $Running.Count -gt 0) {
         for ($i = $Running.Count - 1; $i -ge 0; $i--) {
-            if ($Running[$i].HasExited) {
-                if ($Running[$i].ExitCode -ne 0) { $Failed++ }
-                $Running[$i].Dispose()
+            $Item = $Running[$i]
+            if ($Item.Proc.HasExited) {
+                [void]$Item.Out.Wait(500)
+                [void]$Item.Err.Wait(500)
+                if ($Item.Proc.ExitCode -ne 0) {
+                    $Msg = ""
+                    if ($Item.Err.IsCompleted -and $Item.Err.Result) { $Msg = $Item.Err.Result.Trim() }
+                    if (-not $Msg -and $Item.Out.IsCompleted -and $Item.Out.Result) { $Msg = $Item.Out.Result.Trim() }
+                    $Failures.Add("$($Item.Cmd) -> $Msg")
+                }
+                $Item.Proc.Dispose()
                 $Running.RemoveAt($i)
                 $Done++
             }
@@ -614,9 +692,9 @@ function Invoke-ParallelWarpCli {
             $p.StartInfo = $psi
             try {
                 [void]$p.Start()
-                $Running.Add($p)
+                $Running.Add([PSCustomObject]@{ Proc = $p; Cmd = $CmdArgs[$Next]; Out = $p.StandardOutput.ReadToEndAsync(); Err = $p.StandardError.ReadToEndAsync() })
             } catch {
-                $Failed++
+                $Failures.Add("$($CmdArgs[$Next]) -> не удалось запустить warp-cli")
                 $Done++
             }
             $Next++
@@ -628,7 +706,7 @@ function Invoke-ParallelWarpCli {
     }
     
     Write-Host ""
-    return $Failed
+    return ,$Failures.ToArray()
 }
 
 function Apply-RuBypassTemplate {
@@ -720,8 +798,11 @@ function Apply-RuBypassTemplate {
     
     if ($Cmds.Count -gt 0) {
         Write-Host "-> Добавление новых исключений в WARP ($($Cmds.Count) команд)..." -ForegroundColor Yellow
-        $Failed = Invoke-ParallelWarpCli -CmdArgs $Cmds.ToArray() -ThrottleLimit 30
-        if ($Failed -gt 0) { Write-Host "-> Не применено команд: $Failed" -ForegroundColor Red }
+        $Failures = @(Invoke-ParallelWarpCli -CmdArgs $Cmds.ToArray() -ThrottleLimit 30)
+        if ($Failures.Count -gt 0) {
+            Write-Host "-> Не применено команд: $($Failures.Count)" -ForegroundColor Red
+            foreach ($F in ($Failures | Select-Object -First 5)) { Write-Host "   $F" -ForegroundColor DarkGray }
+        }
         $WasConnected = ((Get-WarpStatus) -eq "Connected")
         
         if ($WasConnected -and -not $global:TunnelPaused) {
@@ -1235,13 +1316,11 @@ function Show-Settings {
                         $StatsOutput = ""
                         try {
                             $Process.Start() | Out-Null
-                            
-                            $null = $Process.WaitForExit(1500)
-                            
-                            if (-not $Process.HasExited) {
-                                $Process.Kill()
-                            }
-                            $StatsOutput = $Process.StandardOutput.ReadToEnd()
+                            $OutTask = $Process.StandardOutput.ReadToEndAsync()
+                            $ErrTask = $Process.StandardError.ReadToEndAsync()
+                            if (-not $Process.WaitForExit(3000)) { $Process.Kill() }
+                            $null = $OutTask.Wait(1000)
+                            if ($OutTask.IsCompleted) { $StatsOutput = $OutTask.Result }
                         } catch {
                             $StatsOutput = ""
                         }
@@ -1544,10 +1623,10 @@ function Show-ActiveSessionMenu ($CurrentInput, $TimerVal) {
     
     Write-Host " Внешний IP-адрес       : " -NoNewline -ForegroundColor White
     if ($global:TunnelPaused -or $WarpState.Trim() -ne "Connected") {
-        Write-Host "-".PadRight(31) -ForegroundColor Gray
+        Write-Host ("-".PadRight(31)) -ForegroundColor Gray
     } else {
-        $DisplayIp = if ($global:CurrentExternalIp) { $global:CurrentExternalIp } else { "не определён" }
-        Write-Host $DisplayIp.PadRight(31) -ForegroundColor Gray
+        $DisplayIp = if ($global:CurrentExternalIp) { $global:CurrentExternalIp } else { "определение..." }
+        Write-Host ($DisplayIp.PadRight(31)) -ForegroundColor Gray
     }
     
     if (-not $global:TunnelPaused -and $global:PingResults -and $global:PingResults.Count -gt 0) {
@@ -1568,11 +1647,11 @@ function Show-ActiveSessionMenu ($CurrentInput, $TimerVal) {
             if ($DomName.Length -gt 25) { $DomName = $DomName.Substring(0, 22) + "..." }
             Write-Host "  $($DomName.PadRight(25)) : " -NoNewline
             if ($Ping.Status -eq "OK") {
-                Write-Host "$($Ping.Latency) ms     " -ForegroundColor Green
+                Write-Host (("$($Ping.Latency) ms").PadRight(30)) -ForegroundColor Green
             } elseif ($Ping.Status -eq "Timeout") {
-                Write-Host "Превышено время ожидания " -ForegroundColor Red
+                Write-Host ("Превышено время ожидания".PadRight(30)) -ForegroundColor Red
             } else {
-                Write-Host "Узел недоступен          " -ForegroundColor Red
+                Write-Host ("Узел недоступен".PadRight(30)) -ForegroundColor Red
             }
         }
     } else {
@@ -1606,8 +1685,13 @@ function Get-ActiveSessionInput ($BatFile, [ref]$TimeRemainingRef) {
     
     while ($true) {
         $Now = [DateTime]::Now
+        if (Receive-IpLookup) { Show-ActiveSessionMenu $InputStr $TimeRemainingRef.Value }
         if (($Now - $LastTick).TotalSeconds -ge 1) {
             $LastTick = $Now
+            if (-not $global:TunnelPaused -and -not $global:IpOk -and -not $global:IpTask -and $global:IpAttempts -lt 6 -and ([DateTime]::Now - $global:LastIpAttempt).TotalSeconds -ge 5 -and (Get-CachedWarpStatus).Trim() -eq "Connected") {
+                $global:IpAttempts++
+                Start-IpLookup 0
+            }
             if ($Config.AutoPing -eq 2 -and -not $global:TunnelPaused) {
                 $TimeRemainingRef.Value--
                 if ($TimeRemainingRef.Value -le 0) {
@@ -1759,7 +1843,7 @@ function Launch-Tunnel ($BatFile) {
                 Write-Host "`nКлиент WARP будет перерегистрирован, адрес может измениться. Продолжить? (Y/N)" -ForegroundColor Yellow
                 $Ans = [console]::ReadKey($true).KeyChar.ToString().ToLower()
                 if ($Ans -match "[yд]") {
-                    $OldIp = $global:CurrentExternalIp
+                    $OldIp = if ($global:IpOk) { $global:CurrentExternalIp } else { "" }
                     $RestoreSplit = $false
                     $SettingsFile = "C:\ProgramData\Cloudflare\settings.json"
                     if (Test-Path $SettingsFile) {
@@ -1768,36 +1852,36 @@ function Launch-Tunnel ($BatFile) {
                             if (($Cur.excluded_hosts -and @($Cur.excluded_hosts).Count -gt 0) -or ($Cur.excluded_ips -and @($Cur.excluded_ips).Count -gt 0)) { $RestoreSplit = $true }
                         } catch {}
                     }
-                    Write-Host "-> Перерегистрация клиента..." -ForegroundColor Yellow
+                    Write-Host "-> Удаление текущей регистрации клиента WARP..." -ForegroundColor Yellow
                     & $WarpCli --accept-tos disconnect | Out-Null
                     & $WarpCli --accept-tos registration delete 2>$null | Out-Null
-                    & $WarpCli --accept-tos registration new 2>$null | Out-Null
-                    if ($LASTEXITCODE -ne 0) {
-                        Start-Sleep -Seconds 2
-                        & $WarpCli --accept-tos registration new 2>$null | Out-Null
-                    }
-                    if ($LASTEXITCODE -ne 0) {
-                        Write-Host "Не удалось зарегистрировать клиента (возможен лимит запросов Cloudflare). Попробуйте позже." -ForegroundColor Red
-                    } elseif ($Config.WarpLicense) {
-                        Set-WarpLicense $Config.WarpLicense | Out-Null
-                    }
+                    Write-Host "-> Новая регистрация выполнится при подключении." -ForegroundColor Gray
                     $Res = Connect-WarpTunnel $BatFile
                     if ($Res) {
                         $global:TunnelPaused = $false
                         if ($RestoreSplit) {
                             Write-Host "-> Восстановление маршрутизации Split Tunneling..." -ForegroundColor Yellow
                             Apply-RuBypassTemplate
-                            Update-CachedExternalIp
                         }
+                        Write-Host "-> Определение нового IP-адреса..." -ForegroundColor Yellow
+                        Wait-ExternalIp 20
                         if ($Config.AutoPing -ne 0) {
                             Write-Host "-> Обновление пинга (ожидайте)..." -ForegroundColor Yellow
                             Measure-Latency
                         }
-                        Write-Host "IP: $OldIp -> $($global:CurrentExternalIp)" -ForegroundColor Green
+                        $NewIp = $global:CurrentExternalIp
+                        $Was = if ($OldIp) { $OldIp } else { "неизвестно" }
+                        if (-not $global:IpOk) {
+                            Write-Host "Новый IP определить не удалось, нажмите Enter в меню для повторного опроса." -ForegroundColor Yellow
+                        } elseif ($OldIp -and (($OldIp -split " ")[0] -eq ($NewIp -split " ")[0])) {
+                            Write-Host "Адрес не изменился: $NewIp (Cloudflare выдал тот же)." -ForegroundColor Yellow
+                        } else {
+                            Write-Host "IP: $Was -> $NewIp" -ForegroundColor Green
+                        }
                     } else {
                         Write-Host "Ошибка подключения после перерегистрации." -ForegroundColor Red
                     }
-                    Start-Sleep -Seconds 2
+                    Start-Sleep -Seconds 4
                 }
                 $TimeRemaining = $Config.PingInterval
                 Clear-Host
