@@ -149,7 +149,7 @@ function Start-IpLookup ($Source = 0) {
             $global:IpHttp = New-Object System.Net.Http.HttpClient
             $global:IpHttp.Timeout = [TimeSpan]::FromSeconds(4)
         }
-        $Url = if ($Source -eq 0) { "https://www.cloudflare.com/cdn-cgi/trace" } else { "https://ipinfo.io/json" }
+        $Url = if ($Source -eq 0) { "https://1.1.1.1/cdn-cgi/trace" } else { "https://ipinfo.io/json" }
         $global:IpTask = $global:IpHttp.GetStringAsync($Url)
     } catch {
         $global:IpTask = $null
@@ -160,6 +160,7 @@ function Start-IpLookup ($Source = 0) {
 function Update-CachedExternalIp {
     $global:IpOk = $false
     $global:IpAttempts = 0
+    $global:Ip6Fallback = $null
     $global:CurrentExternalIp = "определение..."
     Start-IpLookup 0
 }
@@ -178,9 +179,14 @@ function Receive-IpLookup {
             $Loc = if ($Text -match "(?m)^loc=(\S+)") { $Matches[1] } else { "" }
             $Warp = if ($Text -match "(?m)^warp=(\w+)") { $Matches[1] } else { "" }
             $Tag = if ($Warp -eq "on" -or $Warp -eq "plus") { " [WARP]" } elseif ($Warp -eq "off") { " [напрямую]" } else { "" }
-            $global:CurrentExternalIp = if ($Loc) { "$Ip ($Loc)$Tag" } else { "$Ip$Tag" }
-            $global:IpOk = $true
-            return $true
+            $Shown = if ($Loc) { "$Ip ($Loc)$Tag" } else { "$Ip$Tag" }
+            if ($Ip -notmatch ":") {
+                $global:CurrentExternalIp = $Shown
+                $global:IpOk = $true
+                return $true
+            }
+            # IPv6 answer: remember it, but prefer an IPv4 address from the fallback source
+            $global:Ip6Fallback = $Shown
         }
         if ($global:IpSource -eq 1) {
             try {
@@ -197,6 +203,11 @@ function Receive-IpLookup {
     if ($global:IpSource -eq 0) {
         Start-IpLookup 1
         return $false
+    }
+    if ($global:Ip6Fallback) {
+        $global:CurrentExternalIp = $global:Ip6Fallback
+        $global:IpOk = $true
+        return $true
     }
     $global:CurrentExternalIp = "не определён"
     return $true
@@ -1332,11 +1343,11 @@ function Show-Settings {
                                     $Mtu = [math]::Round([double]$Matches[1])
                                 }
                                 elseif ($Line -match "quic_utilized_bandwidth\s*\(value\s*=\s*([\d.]+)\)") {
-                                    $Bytes = [double]$Matches[1]
-                                    if ($Bytes -gt 1MB) {
-                                        $Speed = "$([math]::Round($Bytes / 1MB, 2)) MB/s ($([math]::Round(($Bytes * 8) / 1MB, 2)) Mbps)"
+                                    $Bits = [double]$Matches[1]
+                                    if ($Bits -ge 1e6) {
+                                        $Speed = "$([math]::Round($Bits / 1e6, 1)) Мбит/с ($([math]::Round($Bits / 8e6, 1)) МБ/с)"
                                     } else {
-                                        $Speed = "$([math]::Round($Bytes / 1KB, 2)) KB/s"
+                                        $Speed = "$([math]::Round($Bits / 1e3, 1)) Кбит/с"
                                     }
                                 }
                                 elseif ($Line -match "doh_avg_ms\s*\(.*avg\s*=\s*([\d.]+)\)") {
