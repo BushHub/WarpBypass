@@ -8,9 +8,9 @@ body:
     id: checklist
     attributes:
       label: ⚠️ Чеклист
-      description: Перед созданием нового Issue, удостоверьтесь, что выполнили следующие пункты:
+      description: "Перед созданием нового Issue, удостоверьтесь, что выполнили следующие пункты:"
       options:
-        - label: Я внимательно прочитал [README](https://github.com/rydve/WarpBypass/blob/main/README.md)
+        - label: Я внимательно прочитал [README](https://github.com/BushHub/WarpBypass/blob/main/README.md)
         - label: Я использую последнюю версию `WarpBypass.bat` из официального репозитория
         - label: Я запускаю скрипт от имени Администратора
 
@@ -19,7 +19,7 @@ body:
     attributes:
       label: Описание проблемы
       description: Максимально подробно опишите проблему, с которой вы столкнулись.
-      placeholder: При запуске профиля alt12 консоль выдает ошибку...
+      placeholder: При запуске профиля general (ALT12) консоль выдает ошибку...
     validations:
       required: true
 
@@ -27,8 +27,8 @@ body:
     id: version
     attributes:
       label: Версия WarpBypass
-      description: Укажите версию утилиты (указана в главном меню)
-      placeholder: v4.4
+      description: Укажите версию утилиты (она в заголовке окна и в главном меню)
+      placeholder: v5.1
     validations:
       required: true
 
@@ -44,7 +44,7 @@ body:
   - type: dropdown
     id: dns_fix
     attributes:
-      label: Включен ли "Временный DNS Фикс" в настройках?
+      label: Включён ли сброс кэша DNS (Настройки → Подключение)?
       options:
         - "Да"
         - "Нет"
