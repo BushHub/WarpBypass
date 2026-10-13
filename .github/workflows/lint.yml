@@ -1,0 +1,67 @@
+name: Lint
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Parse the PowerShell part of WarpBypass.bat
+        shell: pwsh
+        run: |
+          $text = Get-Content -LiteralPath WarpBypass.bat -Raw -Encoding UTF8
+          $idx = $text.IndexOf("`n#>")
+          if ($idx -lt 0) { throw "End of the batch header (#>) not found" }
+          $code = $text.Substring($idx + 3)
+          $tokens = $null
+          $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseInput($code, [ref]$tokens, [ref]$errors)
+          if ($errors.Count -gt 0) {
+            foreach ($e in $errors) { Write-Host "::error::$($e.Message) (line $($e.Extent.StartLineNumber) of the PowerShell part)" }
+            exit 1
+          }
+
+      - name: Check WarpBypass.bat.sha256
+        shell: pwsh
+        run: |
+          $expected = ((Get-Content -LiteralPath WarpBypass.bat.sha256 -Raw).Trim() -split '\s+')[0]
+          $actual = (Get-FileHash -LiteralPath WarpBypass.bat -Algorithm SHA256).Hash
+          if ($expected -ne $actual) { throw "WarpBypass.bat.sha256 is out of date (expected $expected, actual $actual)" }
+
+      - name: Check translations (ru / en)
+        shell: pwsh
+        run: |
+          $text = Get-Content -LiteralPath WarpBypass.bat -Raw -Encoding UTF8
+          function Get-Table($Name) {
+              $m = [regex]::Match($text, '(?s)\$' + $Name + " = @'\r?\n(.*?)\r?\n'@")
+              if (-not $m.Success) { throw "Table $Name not found" }
+              return $m.Groups[1].Value
+          }
+          $ruText = Get-Table 'StringsRu'
+          $enText = Get-Table 'StringsEn'
+          $ru = ConvertFrom-StringData -StringData $ruText
+          $en = ConvertFrom-StringData -StringData $enText
+          $code = $text.Replace($ruText, '').Replace($enText, '')
+          $used = [regex]::Matches($code, "\bT '([A-Za-z0-9_.]+)'") | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
+          $errors = @()
+          foreach ($k in $used) {
+              if (-not $ru.ContainsKey($k)) { $errors += "ru is missing: $k" }
+              if (-not $en.ContainsKey($k)) { $errors += "en is missing: $k" }
+          }
+          foreach ($k in $ru.Keys) { if (-not $en.ContainsKey($k)) { $errors += "en is missing: $k" } }
+          foreach ($k in $en.Keys) { if (-not $ru.ContainsKey($k)) { $errors += "ru is missing: $k" } }
+          foreach ($k in $ru.Keys) {
+              if (-not $en.ContainsKey($k)) { continue }
+              $a = (([regex]::Matches($ru[$k], '\{(\d+)\}') | ForEach-Object { $_.Value } | Sort-Object) -join ',')
+              $b = (([regex]::Matches($en[$k], '\{(\d+)\}') | ForEach-Object { $_.Value } | Sort-Object) -join ',')
+              if ($a -ne $b) { $errors += "placeholders differ: $k" }
+          }
+          if ($errors.Count -gt 0) {
+              foreach ($e in $errors) { Write-Host "::error::$e" }
+              exit 1
+          }
+          "Translations OK: $($ru.Count) keys"
