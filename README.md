@@ -117,6 +117,8 @@
 
 **Антивирус блокирует загрузку или запуск.** Zapret использует драйвер WinDivert, который некоторые антивирусы считают подозрительным. Добавьте папку `%LOCALAPPDATA%\WarpBypass` в исключения.
 
+**Не скачивается Cloudflare WARP (Cloudflare WARP does not download).** Провайдер может блокировать `downloads.cloudflareclient.com`. Программа попробует несколько адресов и `winget`, а при неудаче покажет причину ошибки. Скачайте установщик Cloudflare WARP (файл `.msi`) вручную с [1.1.1.1](https://1.1.1.1), через браузер или VPN, и положите его рядом с `WarpBypass.bat`, в `%LOCALAPPDATA%\WarpBypass` или в «Загрузки»: при следующем запуске программа найдёт и установит его сама. Можно также просто установить WARP с 1.1.1.1 и запустить программу снова.
+
 **Как обновиться?** Программа сама предложит обновление при запуске. Вручную: скачайте [последний релиз](https://github.com/BushHub/WarpBypass/releases/latest) и замените файл.
 
 Не нашли ответ? Создайте [issue](https://github.com/BushHub/WarpBypass/issues/new/choose) или спросите в [Telegram](https://t.me/bushsquad) / [Discord](https://discord.gg/ebush).

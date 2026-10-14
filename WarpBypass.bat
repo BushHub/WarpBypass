@@ -1,6 +1,6 @@
 <# : RUN
 @echo off
-title WarpBypass v5.1 by BUSH
+title WarpBypass v5.1.1 by BUSH
 cd /d "%~dp0"
 set "WARP_BAT_PATH=%~f0"
 fltmc >nul 2>&1
@@ -20,7 +20,7 @@ $WarningPreference = 'SilentlyContinue'
 # Author: BUSH
 # =========================================================
 
-$AppVersion = "5.1"
+$AppVersion = "5.1.1"
 
 # The file was started by the user: drop the "downloaded from the Internet" mark so Windows stops warning on every launch
 try { Unblock-File -LiteralPath $env:WARP_BAT_PATH -ErrorAction SilentlyContinue } catch {}
@@ -360,6 +360,14 @@ conn.dl.warp=Загрузка Cloudflare WARP
 conn.warp.missing=Установка завершена, но warp-cli.exe не найден.
 conn.warp.installed=Cloudflare WARP установлен.
 conn.warp.failed=Не удалось загрузить или установить Cloudflare WARP.
+conn.warp.local=Найден установщик Cloudflare WARP: {0}
+conn.warp.reason=Причина: {0}
+conn.warp.badfile=Загруженный файл не является установщиком MSI (возможно, провайдер подменил страницу).
+conn.warp.winget=Загрузка не удалась, пробуем установить через winget...
+conn.warp.wingetfail=winget завершился, но warp-cli.exe не найден.
+conn.warp.manual1=Скачайте Cloudflare WARP вручную с https://1.1.1.1 и установите его, либо положите MSI рядом с WarpBypass.bat.
+conn.warp.manual2=Затем запустите подключение снова. Если ошибка повторится, пришлите её текст в issue на GitHub.
+wait.winget=Установка Cloudflare WARP через winget
 conn.restart.svc=Перезапуск службы Cloudflare WARP...
 conn.wait.daemon=Ожидание готовности службы WARP...
 conn.init=Подготовка подключения...
@@ -643,6 +651,14 @@ conn.dl.warp=Downloading Cloudflare WARP
 conn.warp.missing=Installation finished, but warp-cli.exe was not found.
 conn.warp.installed=Cloudflare WARP installed.
 conn.warp.failed=Could not download or install Cloudflare WARP.
+conn.warp.local=Found a Cloudflare WARP installer: {0}
+conn.warp.reason=Reason: {0}
+conn.warp.badfile=The downloaded file is not an MSI installer (your provider may have replaced the page).
+conn.warp.winget=Download failed, trying to install with winget...
+conn.warp.wingetfail=winget finished, but warp-cli.exe was not found.
+conn.warp.manual1=Download Cloudflare WARP manually from https://1.1.1.1 and install it, or put the MSI next to WarpBypass.bat.
+conn.warp.manual2=Then start the connection again. If the error persists, send its text in a GitHub issue.
+wait.winget=Installing Cloudflare WARP with winget
 conn.restart.svc=Restarting the Cloudflare WARP service...
 conn.wait.daemon=Waiting for the WARP service to be ready...
 conn.init=Preparing the connection...
@@ -945,8 +961,10 @@ if (-not (Test-Path $StorageDir)) { New-Item -ItemType Directory -Path $StorageD
 $ZapretDir = "$StorageDir\zapret"
 $ZapretZip = "$StorageDir\zapret.zip"
 $ZapretUrl = "https://github.com/Flowseal/zapret-discord-youtube/archive/refs/heads/main.zip"
-$WarpCli = "C:\Program Files\Cloudflare\Cloudflare WARP\warp-cli.exe"
-$WarpSettingsPath = "C:\ProgramData\Cloudflare\settings.json"
+$ProgramFilesDir = if ($env:ProgramFiles) { $env:ProgramFiles } else { "C:\Program Files" }
+$ProgramDataDir = if ($env:ProgramData) { $env:ProgramData } else { "C:\ProgramData" }
+$global:WarpCli = Join-Path $ProgramFilesDir "Cloudflare\Cloudflare WARP\warp-cli.exe"
+$WarpSettingsPath = Join-Path $ProgramDataDir "Cloudflare\settings.json"
 
 $ConfigPath = "$StorageDir\config.json"
 $PingListPath = "$StorageDir\ping_list.txt"
@@ -978,18 +996,6 @@ if (-not $FirstRun) {
 if ($Config.Language -ne "ru" -and $Config.Language -ne "en") { $Config.Language = Get-DefaultLanguage }
 Initialize-Language $Config.Language
 
-# Disable WARP GUI client auto-start to prevent boot-time connection loops blocking internet
-try {
-    foreach ($Hive in @("HKLM", "HKCU")) {
-        $RegPath = "$Hive`:\Software\Microsoft\Windows\CurrentVersion\Run"
-        foreach ($KeyName in @("CloudflareWARP", "Cloudflare WARP")) {
-            if (Get-ItemProperty -Path $RegPath -Name $KeyName -ErrorAction SilentlyContinue) {
-                Remove-ItemProperty -Path $RegPath -Name $KeyName -Force -ErrorAction SilentlyContinue *> $null
-            }
-        }
-    }
-} catch {}
-
 if (-not (Test-Path $PingListPath)) {
     "discord.com`nyoutube.com`ngoogle.com" | Set-Content $PingListPath -Encoding UTF8
 }
@@ -1012,10 +1018,13 @@ function Start-DownloadWithProgress {
     $UnitMb = T 'unit.mb'
     
     try {
-        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        # TLS 1.2 and 1.3 (1.3 is skipped on a .NET that does not know it)
+        try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]3072 -bor [Net.SecurityProtocolType]12288 }
+        catch { try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]3072 } catch {} }
         $Request = [System.Net.HttpWebRequest]::Create($Uri)
         $Request.UserAgent = "WarpBypass"
-        $Request.Timeout = 20000
+        $Request.Timeout = 30000
+        $Request.ReadWriteTimeout = 30000
         
         $Response = $Request.GetResponse()
         $TotalBytes = $Response.ContentLength
@@ -1141,6 +1150,18 @@ function Start-SetupWizard {
     [console]::ReadKey($true) | Out-Null
 }
 
+function Test-GitHubReachable {
+    $Client = New-Object Net.Sockets.TcpClient
+    try {
+        $Task = $Client.ConnectAsync("api.github.com", 443)
+        return ($Task.Wait(2000) -and $Client.Connected)
+    } catch {
+        return $false
+    } finally {
+        $Client.Close()
+    }
+}
+
 function Check-AppUpdate {
     if (-not $IsOnline) { return }
     Write-Step (T 'upd.checking') "Gray"
@@ -1175,8 +1196,9 @@ function Check-AppUpdate {
                         $Expected = (([string]$HashText).Trim() -split '\s+')[0]
                     } catch {}
                     $Valid = ($NewText -match '^\s*<# : RUN') -and ($NewText -match ('\$AppVersion = "' + [regex]::Escape($RemoteVersionStr) + '"'))
-                    if ($Valid -and $Expected) {
-                        $Valid = ((Get-FileHash -LiteralPath $TempFile -Algorithm SHA256).Hash -eq $Expected)
+                    # without a checksum the update is not installed
+                    if ($Valid) {
+                        $Valid = ($Expected -match '^[0-9a-fA-F]{64}$') -and ((Get-FileHash -LiteralPath $TempFile -Algorithm SHA256).Hash -eq $Expected)
                     }
                     if (-not $Valid) {
                         Remove-Item -LiteralPath $TempFile -ErrorAction SilentlyContinue
@@ -1187,7 +1209,7 @@ function Check-AppUpdate {
                     Write-Step (T 'upd.installing') "Cyan"
                     
                     $UpdaterCode = "@echo off`nchcp 65001 >nul`ntimeout /t 2 /nobreak >nul`nmove /y `"$TempFile`" `"$BatPath`" >nul`nstart `"`" `"$BatPath`"`ndel `"%~f0`""
-                    [IO.File]::WriteAllText($UpdaterBat, $UpdaterCode, [System.Text.Encoding]::UTF8)
+                    [IO.File]::WriteAllText($UpdaterBat, $UpdaterCode, (New-Object System.Text.UTF8Encoding $false))
                     
                     Start-Process -FilePath $UpdaterBat -WindowStyle Hidden
                     Exit
@@ -1566,7 +1588,7 @@ function Get-MissingRuleCommands ($Domains, $IpRanges) {
 
 function Get-SplitTunnelEntries {
     $Result = [PSCustomObject]@{ Hosts = @(); Ips = @() }
-    $File = "C:\ProgramData\Cloudflare\settings.json"
+    $File = $WarpSettingsPath
     if (-not (Test-Path $File)) { return $Result }
     try {
         $Settings = Get-Content $File -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -1865,7 +1887,7 @@ function Get-WarpProduct {
                 $Guid = $null
                 if ($Item.PSChildName -match "^\{[0-9A-Fa-f-]{36}\}$") { $Guid = $Item.PSChildName }
                 elseif ($Item.UninstallString -match "(\{[0-9A-Fa-f-]{36}\})") { $Guid = $Matches[1] }
-                if ($Guid) { return [PSCustomObject]@{ Name = $Item.DisplayName; Guid = $Guid } }
+                if ($Guid) { return [PSCustomObject]@{ Name = $Item.DisplayName; Guid = $Guid; InstallLocation = $Item.InstallLocation } }
             }
         }
     } catch {}
@@ -2377,7 +2399,166 @@ function Remove-WarpGuiAutostart {
     } catch {}
 }
 
+# Locate warp-cli.exe: default path, PATH, then the install location from the registry
+function Find-WarpCli {
+    if (Test-Path -LiteralPath $global:WarpCli) { return $true }
+    $Candidates = @()
+    try {
+        $Cmd = Get-Command warp-cli -ErrorAction SilentlyContinue
+        if ($Cmd -and $Cmd.Source) { $Candidates += $Cmd.Source }
+    } catch {}
+    try {
+        $Product = Get-WarpProduct
+        if ($Product -and $Product.InstallLocation) { $Candidates += (Join-Path $Product.InstallLocation "warp-cli.exe") }
+    } catch {}
+    foreach ($Path in $Candidates) {
+        if ($Path -and (Test-Path -LiteralPath $Path)) {
+            $global:WarpCli = $Path
+            return $true
+        }
+    }
+    return $false
+}
+
+# An MSI is an OLE container: it must be bigger than 1 MB and start with D0 CF 11 E0 A1 B1 1A E1
+function Test-MsiFile ([string]$Path) {
+    try {
+        $Item = Get-Item -LiteralPath $Path -ErrorAction Stop
+        if ($Item.Length -le 1MB) { return $false }
+        $Head = New-Object byte[] 8
+        $Stream = [IO.File]::OpenRead($Item.FullName)
+        try { $Count = $Stream.Read($Head, 0, 8) } finally { $Stream.Dispose() }
+        if ($Count -ne 8) { return $false }
+        $Magic = @(0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1)
+        for ($i = 0; $i -lt 8; $i++) { if ($Head[$i] -ne $Magic[$i]) { return $false } }
+        return $true
+    } catch {
+        return $false
+    }
+}
+
+# Newest valid Cloudflare WARP installer next to the .bat, in the storage folder or in Downloads
+function Find-LocalWarpMsi {
+    $Dirs = @()
+    if ($env:WARP_BAT_PATH) { $Dirs += (Split-Path -Parent $env:WARP_BAT_PATH) }
+    $Dirs += $StorageDir
+    if ($env:USERPROFILE) { $Dirs += (Join-Path $env:USERPROFILE "Downloads") }
+    $Files = @()
+    foreach ($Dir in ($Dirs | Where-Object { $_ } | Select-Object -Unique)) {
+        if (-not (Test-Path -LiteralPath $Dir)) { continue }
+        foreach ($Pattern in @("Cloudflare*WARP*.msi", "Cloudflare_WARP*.msi")) {
+            $Files += @(Get-ChildItem -LiteralPath $Dir -Filter $Pattern -File -ErrorAction SilentlyContinue)
+        }
+    }
+    foreach ($File in ($Files | Sort-Object -Property LastWriteTime -Descending)) {
+        if (Test-MsiFile $File.FullName) { return $File.FullName }
+    }
+    return $null
+}
+
+# Installs the given MSI silently while hiding the WARP window; returns $true when warp-cli.exe exists afterwards
+function Invoke-WarpMsi ([string]$MsiPath) {
+    Set-ConsoleQuickEdit $false
+    $Msi = Start-Process msiexec.exe -ArgumentList "/i `"$MsiPath`" /qn /norestart ONBOARDING=false START_WPF_AS_USER=0" -PassThru -WindowStyle Hidden
+    # the installer launches the WARP window: close it as soon as it appears, also right after the install ends
+    $Label = T 'wait.install'
+    $Sw = [Diagnostics.Stopwatch]::StartNew()
+    $Tick = 0
+    while (-not $Msi.HasExited -and $Sw.Elapsed.TotalMinutes -lt 5) {
+        if ($Tick % 4 -eq 0) { Stop-WarpGui }
+        Show-Busy $Label $Tick $Sw.Elapsed.TotalSeconds
+        Start-Sleep -Milliseconds 250
+        $Tick++
+    }
+    $InstallOk = $Msi.HasExited
+    if (-not $InstallOk) { try { $Msi.Kill() } catch {} }
+    for ($i = 0; $i -lt 12; $i++) {
+        Stop-WarpGui
+        Show-Busy $Label $Tick $Sw.Elapsed.TotalSeconds
+        Start-Sleep -Milliseconds 250
+        $Tick++
+    }
+    Complete-Busy $Label $InstallOk $Sw.Elapsed.TotalSeconds
+    Remove-WarpGuiAutostart
+    return [bool](Find-WarpCli)
+}
+
+# Installs Cloudflare WARP: local MSI, download (main and alternative address), then winget.
+# Returns $true/$false; the reasons of the failed attempts are left in $global:WarpInstallErrors
+function Install-WarpClient {
+    $global:WarpInstallErrors = @()
+    $Downloaded = "$StorageDir\warp_download.msi"
+
+    $Local = Find-LocalWarpMsi
+    if ($Local) {
+        Write-Step (T 'conn.warp.local' (Split-Path -Leaf $Local))
+        if ([bool](Invoke-WarpMsi $Local)) { return $true }
+        $global:WarpInstallErrors += (T 'conn.warp.missing')
+    }
+
+    $Sources = @(
+        "https://downloads.cloudflareclient.com/v1/download/windows/ga",
+        "https://downloads.cloudflareclient.com/v1/download/windows/ga",
+        "https://1111-releases.cloudflareclient.com/windows/Cloudflare_WARP_Release-x64.msi"
+    )
+    $Attempt = 0
+    foreach ($Url in $Sources) {
+        if ($Attempt -gt 0) { Start-Sleep -Seconds 2 }
+        $Attempt++
+        $Installed = $null
+        try {
+            Start-DownloadWithProgress -Uri $Url -OutFile $Downloaded -Label (T 'conn.dl.warp')
+            if (-not (Test-MsiFile $Downloaded)) { throw (T 'conn.warp.badfile') }
+            $Installed = [bool](Invoke-WarpMsi $Downloaded)
+            if (-not $Installed) { throw (T 'conn.warp.missing') }
+        } catch {
+            $global:WarpInstallErrors += $_.Exception.Message
+        } finally {
+            # only the file downloaded here is removed, never a user-supplied MSI
+            Remove-Item -LiteralPath $Downloaded -Force -ErrorAction SilentlyContinue
+        }
+        if ($Installed) { return $true }
+        # a valid installer that did not produce warp-cli.exe: more downloads will not help
+        if ($global:WarpInstallErrors[-1] -eq (T 'conn.warp.missing')) { break }
+    }
+
+    $Winget = $null
+    try { $Winget = Get-Command winget -ErrorAction SilentlyContinue } catch {}
+    if ($Winget) {
+        try {
+            Write-Step (T 'conn.warp.winget')
+            Set-ConsoleQuickEdit $false
+            $Proc = Start-Process -FilePath $Winget.Source -ArgumentList "install --id Cloudflare.Warp -e --silent --accept-package-agreements --accept-source-agreements" -PassThru -WindowStyle Hidden
+            $Label = T 'wait.winget'
+            $Sw = [Diagnostics.Stopwatch]::StartNew()
+            $Tick = 0
+            while (-not $Proc.HasExited -and $Sw.Elapsed.TotalMinutes -lt 5) {
+                if ($Tick % 4 -eq 0) { Stop-WarpGui }
+                Show-Busy $Label $Tick $Sw.Elapsed.TotalSeconds
+                Start-Sleep -Milliseconds 250
+                $Tick++
+            }
+            $Done = $Proc.HasExited
+            if (-not $Done) { try { $Proc.Kill() } catch {} }
+            for ($i = 0; $i -lt 12; $i++) {
+                Stop-WarpGui
+                Show-Busy $Label $Tick $Sw.Elapsed.TotalSeconds
+                Start-Sleep -Milliseconds 250
+                $Tick++
+            }
+            Complete-Busy $Label $Done $Sw.Elapsed.TotalSeconds
+            Remove-WarpGuiAutostart
+            if ([bool](Find-WarpCli)) { return $true }
+            $global:WarpInstallErrors += (T 'conn.warp.wingetfail')
+        } catch {
+            $global:WarpInstallErrors += $_.Exception.Message
+        }
+    }
+    return $false
+}
+
 function Connect-WarpTunnel ($BatFile) {
+    $global:WarpInstallFailed = $false
     try { Stop-Service -Name "zapret" -Force -ErrorAction SilentlyContinue *> $null } catch {}
     try { Stop-Service -Name "goodbyedpi" -Force -ErrorAction SilentlyContinue *> $null } catch {}
     try { Stop-Winws } catch {}
@@ -2390,45 +2571,26 @@ function Connect-WarpTunnel ($BatFile) {
     
     Start-Winws $BatFile
     
-    if (-not (Test-Path $WarpCli)) {
-        $WarpMsi = "$StorageDir\Cloudflare_WARP.msi"
-        try {
-            Start-DownloadWithProgress -Uri "https://downloads.cloudflareclient.com/v1/download/windows/ga" -OutFile $WarpMsi -Label (T 'conn.dl.warp')
-            Set-ConsoleQuickEdit $false
-            $Msi = Start-Process msiexec.exe -ArgumentList "/i `"$WarpMsi`" /qn /norestart ONBOARDING=false START_WPF_AS_USER=0" -PassThru -WindowStyle Hidden
-            # the installer launches the WARP window: close it as soon as it appears, also right after the install ends
-            $Label = T 'wait.install'
-            $Sw = [Diagnostics.Stopwatch]::StartNew()
-            $Tick = 0
-            while (-not $Msi.HasExited -and $Sw.Elapsed.TotalMinutes -lt 5) {
-                if ($Tick % 4 -eq 0) { Stop-WarpGui }
-                Show-Busy $Label $Tick $Sw.Elapsed.TotalSeconds
-                Start-Sleep -Milliseconds 250
-                $Tick++
-            }
-            $InstallOk = $Msi.HasExited
-            if (-not $InstallOk) { try { $Msi.Kill() } catch {} }
-            for ($i = 0; $i -lt 12; $i++) {
-                Stop-WarpGui
-                Show-Busy $Label $Tick $Sw.Elapsed.TotalSeconds
-                Start-Sleep -Milliseconds 250
-                $Tick++
-            }
-            Complete-Busy $Label $InstallOk $Sw.Elapsed.TotalSeconds
-            Remove-WarpGuiAutostart
-            Remove-Item $WarpMsi -ErrorAction SilentlyContinue
-            if (-not (Test-Path $WarpCli)) {
-                Write-Host ""
-                Write-Fail (T 'conn.warp.missing')
-                Wait-Enter; Exit
-            }
-            Write-Ok (T 'conn.warp.installed')
-            Start-Sleep -Seconds 2
-        } catch {
+    if (-not (Find-WarpCli)) {
+        $Installed = @(Install-WarpClient)[-1]
+        if ($Installed -ne $true) {
             Write-Host ""
             Write-Fail (T 'conn.warp.failed')
-            Wait-Enter; Exit
+            foreach ($Reason in @($global:WarpInstallErrors | Where-Object { $_ } | Select-Object -Unique)) {
+                Write-Note (T 'conn.warp.reason' $Reason) "Yellow"
+            }
+            Write-Host ""
+            Write-Note (T 'conn.warp.manual1')
+            Write-Note (T 'conn.warp.manual2')
+            Write-Host ""
+            # back to the menu: winws is only needed while WARP connects
+            try { Stop-Winws } catch {}
+            $global:WinwsPendingStop = $false
+            $global:WarpInstallFailed = $true
+            return $false
         }
+        Write-Ok (T 'conn.warp.installed')
+        Start-Sleep -Seconds 2
     }
     
     Set-Service -Name "CloudflareWARP" -StartupType Manual -ErrorAction SilentlyContinue
@@ -2641,7 +2803,8 @@ function Launch-Tunnel ($BatFile) {
         
         $Success = Connect-WarpTunnel $BatFile
         if (-not $Success) {
-            Write-Fail (T 'conn.noresp')
+            # a failed WARP install has already explained itself
+            if (-not $global:WarpInstallFailed) { Write-Fail (T 'conn.noresp') }
             Wait-Enter; return $false
         }
         
@@ -2741,7 +2904,7 @@ function Launch-Tunnel ($BatFile) {
                 if ($Ans -match "[yд]") {
                     $OldIp = if ($global:IpOk) { $global:CurrentExternalIp } else { "" }
                     $RestoreSplit = $false
-                    $SettingsFile = "C:\ProgramData\Cloudflare\settings.json"
+                    $SettingsFile = $WarpSettingsPath
                     if (Test-Path $SettingsFile) {
                         try {
                             $Cur = Get-Content $SettingsFile -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -2828,7 +2991,11 @@ if ($FirstRun) {
     }
 }
 
+Remove-WarpGuiAutostart
+[void](Find-WarpCli)
+
 if ($Config.AutoUpdate) {
+    $IsOnline = [bool](Test-GitHubReachable)
     Check-AppUpdate
     if (-not $ZapretChecked) { Check-Updates }
 }
